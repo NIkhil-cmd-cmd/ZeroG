@@ -1,0 +1,27 @@
+[
+  {
+    "task": "Deploy a Cloud Function triggered by Firestore document creation",
+    "tools": ["zerog_recall", "read_docs", "write_function", "gcloud_deploy", "set_iam", "gcloud_deploy", "generate_code"],
+    "success": true
+  },
+  {
+    "task": "Deploy a Cloud Function triggered by Pub/Sub messages",
+    "tools": ["zerog_recall", "write_function", "gcloud_deploy", "generate_code"],
+    "success": true
+  },
+  {
+    "task": "Create a BigQuery scheduled query for daily engagement metrics",
+    "tools": ["read_docs", "query_bigquery", "write_config", "generate_code"],
+    "success": true
+  },
+  {
+    "task": "Configure Workload Identity Federation for GitHub Actions",
+    "tools": ["read_docs", "check_permissions", "set_iam", "write_config", "generate_code"],
+    "success": true
+  },
+  {
+    "task": "Set up Secret Manager with rotation schedule",
+    "tools": ["read_docs", "write_function", "set_iam", "gcloud_deploy", "generate_code"],
+    "success": true
+  }
+]
