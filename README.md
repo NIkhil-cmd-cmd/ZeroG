@@ -51,36 +51,59 @@ Open [http://localhost:3000](http://localhost:3000)
 | `/demo` | Split-screen cold vs ZeroG demo (SSE) |
 | `/graph` | Force-directed GNN tool-use visualizer |
 
+## Add to Antigravity (public)
+
+One command — clones GitHub, installs skill globally, uses public engine:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/NIkhil-cmd-cmd/ZeroG/main/scripts/install-skill.sh | bash -s public
+export OPENAI_API_KEY=your-key
+```
+
+Then restart your Antigravity agent session.
+
+| URL | Purpose |
+|-----|---------|
+| https://web-pi-nine-22.vercel.app | Landing, demo, install guide |
+| https://zerog-production.up.railway.app | Public memory engine API |
+| https://github.com/NIkhil-cmd-cmd/ZeroG | Source + skill |
+
+## Deploy public engine
+
+**Railway** (from `engine/`):
+```bash
+railway login
+railway init
+railway variables set GEMINI_API_KEY=... OPENAI_API_KEY=...
+railway up
+```
+
+**Render**: connect GitHub repo at [render.com](https://render.com) — uses `render.yaml` blueprint.
+
+After deploy, set your public URL in Antigravity:
+```bash
+export ZEROG_ENGINE_URL=https://your-engine-url
+```
+
 ## Demo (real runs only)
 
-The demo calls **Gemini** for tool-calling and **OpenAI** for embeddings. No simulated fallback.
+Cold and ZeroG run **different tasks** in the same cluster — ZeroG transfers deploy patterns via shared memory (few-shot), not same-task caching.
 
-**Required in `.env`:**
-- `GEMINI_API_KEY` — agent runs
-- `OPENAI_API_KEY` — memory embeddings + GNN task conditioning
-
+**Local:**
 ```bash
 cd engine && ./run.sh server   # terminal 1
 cd web && pnpm dev             # terminal 2
 ```
 
-Open `/demo` → **START** runs 3 real task pairs (cold vs ZeroG), streams live tool calls, retrains the GNN on accumulated traces.
-
-Optional: `./run.sh warmup` pre-generates traces for all 15 GCP tasks.
+Open `/demo` → **Start demo** runs 4 pairs (cold discovers path → ZeroG gets similar task with memory).
 
 ## Deploy to Vercel
 
-The Vercel deployment serves the **landing page and graph UI**. The live demo requires the Python engine running locally (or hosted separately) with `ENGINE_URL` set in Vercel env vars.
+Web app: https://web-pi-nine-22.vercel.app — `ENGINE_URL` env var points at the public Railway engine.
 
 ## The Skill
 
-Install as an Antigravity skill:
-
-```bash
-npx skills add https://raw.githubusercontent.com/NIkhil-cmd-cmd/ZeroG/main/skill/SKILL.md
-```
-
-See `skill/SKILL.md` for full documentation.
+See `skill/SKILL.md` or `/install` on the web app.
 
 ## Built By
 

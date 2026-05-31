@@ -13,8 +13,8 @@ export default function SkillSection() {
           One SKILL.md. Plugs into Antigravity.
         </h2>
         <p className="mt-4 max-w-2xl text-text-secondary">
-          ZeroG follows the Antigravity skill standard — a folder with instructions your agent reads
-          when working on GCP tasks. Memory calls hit the local engine over HTTP.
+          ZeroG follows the Antigravity skill standard. Install from GitHub in one command — memory
+          calls hit the public engine over HTTP.
         </p>
 
         <div className="mt-10 grid gap-8 lg:grid-cols-2">
@@ -39,8 +39,8 @@ description: >
 
           <div className="space-y-4">
             <CopyBlock
-              label="Install (workspace)"
-              code={`./scripts/install-skill.sh workspace`}
+              label="Public install (Antigravity)"
+              code={`curl -fsSL https://raw.githubusercontent.com/NIkhil-cmd-cmd/ZeroG/main/scripts/install-skill.sh | bash -s public\nexport ZEROG_ENGINE_URL=https://zerog-production.up.railway.app\nexport OPENAI_API_KEY=your-key`}
             />
             <CopyBlock
               label="Retrieve trace"
