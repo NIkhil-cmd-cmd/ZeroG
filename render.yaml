@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: zerog-engine
+    runtime: docker
+    plan: free
+    dockerfilePath: ./engine/Dockerfile
+    dockerContext: ./engine
+    healthCheckPath: /health
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: ZEROG_WEB_URL
+        value: https://web-pi-nine-22.vercel.app
