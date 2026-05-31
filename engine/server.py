@@ -1,13 +1,16 @@
 import asyncio
 import json
+import time
 import uuid
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
-from zerog.memory import ZeroGMemory
+from zerog.config import DEFAULT_GEMINI_MODEL
+from zerog.memory import ZeroGMemory, DB_PATH
 from zerog.harness import ZeroGHarness
 from zerog.tasks import get_tasks_for_demo
+from zerog.gnn_service import gnn_service
 
 app = FastAPI(title="ZeroG Engine")
 app.add_middleware(
@@ -16,12 +19,46 @@ app.add_middleware(
 
 memory = ZeroGMemory()
 event_queues: dict[str, asyncio.Queue] = {}
+demo_stats: dict = {}
+last_recall_ms: float = 0.0
 
 
 class RunConfig(BaseModel):
     cluster: str | None = None
-    count: int = 10
-    model: str = "gemini-2.0-flash"
+    count: int = 5
+    model: str = DEFAULT_GEMINI_MODEL
+
+
+class PredictRequest(BaseModel):
+    task: str
+    current_tool: str
+
+
+class RetrieveRequest(BaseModel):
+    task: str
+    cluster: str | None = None
+    top_k: int = 3
+
+
+class RecordRequest(BaseModel):
+    task: str
+    tools: list[str]
+    success: bool = True
+    final_output: str = ""
+    cluster: str | None = None
+
+
+@app.get("/health")
+async def health():
+    import os
+
+    return {
+        "status": "ok",
+        "gemini": bool(os.environ.get("GEMINI_API_KEY")),
+        "openai": bool(os.environ.get("OPENAI_API_KEY")),
+        "traces": len(memory.traces),
+        "gnn_active": gnn_service.active,
+    }
 
 
 @app.post("/run")
@@ -34,22 +71,32 @@ async def start_run(config: RunConfig, background_tasks: BackgroundTasks):
 
 
 async def execute_run(run_id: str, config: RunConfig, queue: asyncio.Queue):
+    global demo_stats, last_recall_ms
     tasks = get_tasks_for_demo(config.cluster, config.count)
     cold = ZeroGHarness(memory=None, model=config.model)
     warm = ZeroGHarness(memory=memory, model=config.model)
 
+    cold_results = []
+    zerog_results = []
+
     for i, task_def in enumerate(tasks):
         task = task_def["task"]
+        cluster = task_def["cluster"]
         await queue.put(
             json.dumps(
                 {
                     "type": "task_start",
                     "index": i,
+                    "total": len(tasks),
                     "task": task,
-                    "cluster": task_def["cluster"],
+                    "cluster": cluster,
                     "service": task_def["service"],
                 }
             )
+        )
+
+        await queue.put(
+            json.dumps({"type": "phase", "agent": "cold", "index": i, "message": f"Task {i+1}/{len(tasks)} · Cold session (no memory)…"})
         )
 
         async def cold_cb(tool, detail, status):
@@ -66,7 +113,13 @@ async def execute_run(run_id: str, config: RunConfig, queue: asyncio.Queue):
                 )
             )
 
-        cold_result = await cold.run_task(task, on_tool_call=cold_cb)
+        try:
+            cold_result = await cold.run_task(task, cluster=cluster, on_tool_call=cold_cb)
+        except Exception as e:
+            await queue.put(json.dumps({"type": "error", "agent": "cold", "message": str(e)}))
+            break
+
+        cold_results.append(cold_result)
         await queue.put(
             json.dumps(
                 {
@@ -76,10 +129,21 @@ async def execute_run(run_id: str, config: RunConfig, queue: asyncio.Queue):
                     "success": cold_result.success,
                     "turns": cold_result.turns,
                     "tokens": cold_result.tokens,
-                    "cost": round(cold_result.cost, 4),
+                    "cost": round(cold_result.cost, 6),
                     "latency": round(cold_result.latency, 2),
                     "tool_calls": cold_result.tool_calls,
                     "layer": cold_result.layer,
+                }
+            )
+        )
+
+        await queue.put(
+            json.dumps(
+                {
+                    "type": "phase",
+                    "agent": "zerog",
+                    "index": i,
+                    "message": f"Task {i+1}/{len(tasks)} · ZeroG session ({len(memory.traces)} traces in memory)…",
                 }
             )
         )
@@ -98,7 +162,17 @@ async def execute_run(run_id: str, config: RunConfig, queue: asyncio.Queue):
                 )
             )
 
-        warm_result = await warm.run_task(task, on_tool_call=warm_cb)
+        recall_start = time.perf_counter()
+        try:
+            warm_result = await warm.run_task(
+                task, cluster=cluster, on_tool_call=warm_cb
+            )
+        except Exception as e:
+            await queue.put(json.dumps({"type": "error", "agent": "zerog", "message": str(e)}))
+            break
+
+        last_recall_ms = (time.perf_counter() - recall_start) * 1000
+        zerog_results.append(warm_result)
         await queue.put(
             json.dumps(
                 {
@@ -108,13 +182,44 @@ async def execute_run(run_id: str, config: RunConfig, queue: asyncio.Queue):
                     "success": warm_result.success,
                     "turns": warm_result.turns,
                     "tokens": warm_result.tokens,
-                    "cost": round(warm_result.cost, 4),
+                    "cost": round(warm_result.cost, 6),
                     "latency": round(warm_result.latency, 2),
                     "tool_calls": warm_result.tool_calls,
                     "layer": warm_result.layer,
                 }
             )
         )
+
+    # Compute real demo metrics from this run
+    if cold_results and zerog_results:
+        cold_tokens = [r.tokens for r in cold_results]
+        zerog_tokens = [r.tokens for r in zerog_results]
+        cold_lat = [r.latency for r in cold_results]
+        zerog_lat = [r.latency for r in zerog_results]
+        total_cold = sum(cold_tokens)
+        total_zerog = sum(zerog_tokens)
+        savings = (
+            round((1 - total_zerog / total_cold) * 100, 1) if total_cold else 0
+        )
+        speedup = (
+            round(sum(cold_lat) / max(sum(zerog_lat), 0.01), 2)
+            if zerog_lat
+            else 1.0
+        )
+        demo_stats = {
+            "cold_tokens_series": cold_tokens,
+            "zerog_tokens_series": zerog_tokens,
+            "cold_turns_series": [r.turns for r in cold_results],
+            "zerog_turns_series": [r.turns for r in zerog_results],
+            "token_savings_pct": savings,
+            "speedup_ratio": speedup,
+            "recall_latency_ms": round(last_recall_ms, 1),
+            "tasks_run": len(cold_results),
+        }
+
+    # Retrain GNN on accumulated real traces
+    if len(memory.traces) >= 3:
+        gnn_service.train_from_traces(memory.all_traces(), epochs=100)
 
     await queue.put(json.dumps({"type": "run_complete", "total_tasks": len(tasks)}))
 
@@ -123,14 +228,14 @@ async def execute_run(run_id: str, config: RunConfig, queue: asyncio.Queue):
 async def stream(run_id: str):
     queue = event_queues.get(run_id)
     if not queue:
-        return {"error": "Not found"}
+        raise HTTPException(status_code=404, detail="Run not found")
 
     async def gen():
         while True:
             data = await queue.get()
             parsed = json.loads(data)
             yield {"event": "message", "data": data}
-            if parsed.get("type") == "run_complete":
+            if parsed.get("type") in ("run_complete", "error"):
                 break
         del event_queues[run_id]
 
@@ -139,48 +244,72 @@ async def stream(run_id: str):
 
 @app.get("/stats")
 async def stats():
-    return memory.get_stats()
-
-
-DEFAULT_GRAPH = {
-    "nodes": [
-        {"id": "read_docs", "count": 45},
-        {"id": "write_function", "count": 38},
-        {"id": "gcloud_deploy", "count": 35},
-        {"id": "set_iam", "count": 22},
-        {"id": "run_tests", "count": 30},
-        {"id": "check_permissions", "count": 18},
-        {"id": "query_bigquery", "count": 15},
-        {"id": "write_config", "count": 14},
-        {"id": "zerog_recall", "count": 32},
-        {"id": "generate_code", "count": 50},
-    ],
-    "edges": [
-        {"source": "zerog_recall", "target": "generate_code", "weight": 28},
-        {"source": "read_docs", "target": "write_function", "weight": 34},
-        {"source": "generate_code", "target": "write_function", "weight": 42},
-        {"source": "write_function", "target": "gcloud_deploy", "weight": 35},
-        {"source": "gcloud_deploy", "target": "set_iam", "weight": 18},
-        {"source": "set_iam", "target": "gcloud_deploy", "weight": 17},
-        {"source": "write_function", "target": "run_tests", "weight": 20},
-        {"source": "run_tests", "target": "write_function", "weight": 9},
-        {"source": "check_permissions", "target": "set_iam", "weight": 11},
-        {"source": "query_bigquery", "target": "write_function", "weight": 6},
-        {"source": "write_config", "target": "gcloud_deploy", "weight": 8},
-    ],
-}
+    return memory.get_stats(gnn_stats=gnn_service.stats(), demo_stats=demo_stats)
 
 
 @app.get("/graph")
 async def graph():
     g = memory.get_graph()
     if not g["nodes"]:
-        return DEFAULT_GRAPH
+        raise HTTPException(
+            status_code=404,
+            detail="No traces yet — run the demo or warmup.py to build the graph",
+        )
     return g
+
+
+@app.post("/predict")
+async def predict(req: PredictRequest):
+    result = await gnn_service.predict(req.task, req.current_tool)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
+@app.post("/memory/retrieve")
+async def memory_retrieve(req: RetrieveRequest):
+    lookup = await memory.lookup(req.task, cluster=req.cluster)
+    return {
+        "hit": lookup.hit,
+        "layer": lookup.layer,
+        "cached_result": lookup.cached_result,
+        "examples": [
+            {
+                "task": ex.task,
+                "tools": ex.tool_sequence,
+                "success": ex.success,
+                "similarity": round(ex.similarity, 4),
+            }
+            for ex in lookup.examples[: req.top_k if req.top_k > 0 else 3]
+        ],
+    }
+
+
+@app.post("/memory/record")
+async def memory_record(req: RecordRequest):
+    await memory.record(
+        task=req.task,
+        tools=req.tools,
+        success=req.success,
+        final_output=req.final_output,
+        cluster=req.cluster,
+    )
+    return {"status": "recorded", "total_traces": len(memory.traces)}
+
+
+@app.post("/train")
+async def train():
+    ok = gnn_service.train_from_traces(memory.all_traces(), epochs=200)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Need at least 3 traces with embeddings")
+    return gnn_service.stats()
 
 
 @app.post("/reset")
 async def reset():
-    global memory
+    global memory, demo_stats
+    if DB_PATH.exists():
+        DB_PATH.unlink()
     memory = ZeroGMemory()
+    demo_stats = {}
     return {"status": "reset"}

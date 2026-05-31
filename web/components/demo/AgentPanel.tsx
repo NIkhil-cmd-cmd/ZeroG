@@ -1,4 +1,11 @@
-type ToolEvent = { tool: string; detail?: string; status?: string };
+import { Card, CardContent } from "@/components/ui/card";
+
+const LAYER_LABELS: Record<string, string> = {
+  exact_match: "Exact match — returned cached trace (0 tokens)",
+  semantic_match: "Semantic match — high-similarity cache hit",
+  few_shot: "Few-shot — injected similar past session",
+  cold_start: "Cold start — no similar traces yet",
+};
 
 export default function AgentPanel({
   title,
@@ -12,7 +19,7 @@ export default function AgentPanel({
   title: string;
   subtitle: string;
   task: string;
-  tools: ToolEvent[];
+  tools: { tool: string; detail?: string; status?: string }[];
   done: boolean;
   metrics: { turns: number; tokens: number; cost: number; latency: number; layer?: string };
   zerog?: boolean;
@@ -20,37 +27,47 @@ export default function AgentPanel({
   const statusColor = (s?: string) => {
     if (s === "complete" || s === "success") return "text-success";
     if (s === "error") return "text-error";
-    if (s === "running") return "text-warning";
     return "text-accent";
   };
 
   return (
     <div className="p-6 flex flex-col">
-      <h2 className="font-mono text-xs text-muted mb-1">{title}</h2>
-      <p className="text-xs text-text/60 mb-4">{subtitle}</p>
+      <h2 className="font-mono text-xs font-semibold text-text-secondary mb-1">{title}</h2>
+      <p className="text-xs text-text-secondary mb-4">{subtitle}</p>
 
-      <div className="flex-1 rounded-xl bg-surface border border-border p-4 font-mono text-xs min-h-[280px]">
-        {task && (
-          <p className="text-muted mb-3 truncate">Task: {task.slice(0, 60)}...</p>
-        )}
-        {tools.map((t, i) => (
-          <div key={i} className={`mb-1 ${statusColor(t.status)}`}>
-            → {t.tool}
-            {t.detail && <span className="text-muted ml-2">{t.detail}</span>}
-          </div>
-        ))}
-        {done && (
-          <p className="mt-4 text-success">
-            ✓ Done — {metrics.turns} tool calls
-            {zerog && metrics.layer && ` · Layer: ${metrics.layer}`}
-          </p>
-        )}
-      </div>
+      <Card className="flex-1 min-h-[280px]">
+        <CardContent className="p-4 font-mono text-xs h-full overflow-y-auto">
+          {task && (
+            <p className="text-muted mb-3 leading-relaxed">
+              <span className="text-muted">Task: </span>
+              {task.length > 100 ? `${task.slice(0, 100)}…` : task}
+            </p>
+          )}
+          {tools.length === 0 && !done && <p className="text-muted animate-pulse">Waiting for Gemini tool calls…</p>}
+          {tools.map((t, i) => (
+            <div key={i} className={`mb-2 ${statusColor(t.status)}`}>
+              <div className="flex items-center gap-2">
+                <span>{t.status === "error" ? "✗" : "→"}</span>
+                <span className="text-accent">{t.tool}</span>
+              </div>
+              {t.detail && <p className="text-muted ml-5 mt-0.5 leading-relaxed break-words">{t.detail}</p>}
+            </div>
+          ))}
+          {done && (
+            <div className="mt-4 pt-3 border-t border-border">
+              <p className="text-success">✓ Done — {metrics.turns} tool calls</p>
+              {zerog && metrics.layer && (
+                <p className="text-violet mt-1 text-[11px]">Memory layer: {LAYER_LABELS[metrics.layer] ?? metrics.layer}</p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-2 gap-2 mt-4 font-mono text-xs text-muted">
         <span>Tool calls: {metrics.turns}</span>
         <span>Tokens: {metrics.tokens.toLocaleString()}</span>
-        <span>Cost: ${metrics.cost.toFixed(2)}</span>
+        <span>Cost: ${metrics.cost.toFixed(4)}</span>
         <span>Time: {metrics.latency.toFixed(0)}s</span>
       </div>
     </div>

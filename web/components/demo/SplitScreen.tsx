@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import AgentPanel from "./AgentPanel";
 import MetricsBar from "./MetricsBar";
 import ResultsChart from "./ResultsChart";
+import { Button } from "@/components/ui/button";
 
 type ToolEvent = {
   agent: "cold" | "zerog";
@@ -25,6 +26,10 @@ type TaskResult = {
 
 export default function SplitScreen() {
   const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [phase, setPhase] = useState("");
+  const [taskIndex, setTaskIndex] = useState(0);
+  const [taskTotal, setTaskTotal] = useState(4);
   const [task, setTask] = useState("");
   const [coldTools, setColdTools] = useState<ToolEvent[]>([]);
   const [zerogTools, setZerogTools] = useState<ToolEvent[]>([]);
@@ -37,6 +42,8 @@ export default function SplitScreen() {
   const reset = useCallback(async () => {
     esRef.current?.close();
     setRunning(false);
+    setError(null);
+    setPhase("");
     setTask("");
     setColdTools([]);
     setZerogTools([]);
@@ -44,32 +51,51 @@ export default function SplitScreen() {
     setZerogMetrics({ turns: 0, tokens: 0, cost: 0, latency: 0, layer: "" });
     setResults([]);
     setLayers({});
-    try {
-      await fetch("/api/reset", { method: "POST" });
-    } catch {
-      /* engine may be offline */
+    const res = await fetch("/api/reset", { method: "POST" });
+    if (!res.ok) {
+      const data = await res.json();
+      setError(data.detail || "Engine unreachable — start it with cd engine && ./run.sh server");
     }
   }, []);
 
   const start = useCallback(async () => {
     await reset();
     setRunning(true);
+    setError(null);
+    setPhase("Starting demo run…");
     try {
       const res = await fetch("/api/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ count: 5 }),
+        body: JSON.stringify({ count: 4, cluster: "cloud_functions" }),
       });
-      const { run_id } = await res.json();
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.detail || "Failed to start run — is the engine running?");
+        setRunning(false);
+        return;
+      }
+      const { run_id } = data;
       const es = new EventSource(`/api/stream?run_id=${run_id}`);
       esRef.current = es;
 
       es.onmessage = (ev) => {
         const data = JSON.parse(ev.data);
+        if (data.type === "error") {
+          setError(data.message);
+          setRunning(false);
+          es.close();
+          return;
+        }
         if (data.type === "task_start") {
           setTask(data.task);
+          setTaskIndex(data.index + 1);
+          setTaskTotal(data.total ?? 4);
           setColdTools([]);
           setZerogTools([]);
+        }
+        if (data.type === "phase") {
+          setPhase(data.message);
         }
         if (data.type === "tool_call") {
           const entry: ToolEvent = {
@@ -78,10 +104,8 @@ export default function SplitScreen() {
             detail: data.detail,
             status: data.status,
           };
-          setTimeout(() => {
-            if (data.agent === "cold") setColdTools((p) => [...p, entry]);
-            else setZerogTools((p) => [...p, entry]);
-          }, (data.agent === "zerog" ? coldTools.length : 0) * 200);
+          if (data.agent === "cold") setColdTools((p) => [...p, entry]);
+          else setZerogTools((p) => [...p, entry]);
         }
         if (data.type === "task_complete") {
           const r: TaskResult = data;
@@ -93,6 +117,7 @@ export default function SplitScreen() {
               cost: data.cost,
               latency: data.latency,
             });
+            setPhase(`Task ${data.index + 1}/${taskTotal} · Cold done — starting ZeroG…`);
           } else {
             setZerogMetrics({
               turns: data.turns,
@@ -104,52 +129,61 @@ export default function SplitScreen() {
             if (data.layer) {
               setLayers((p) => ({ ...p, [data.layer]: (p[data.layer] || 0) + 1 }));
             }
+            setPhase(`Task ${data.index + 1}/${taskTotal} · ZeroG done (${data.layer})`);
           }
         }
         if (data.type === "run_complete") {
+          setPhase("Demo complete");
           setRunning(false);
           es.close();
         }
       };
       es.onerror = () => {
+        setError("Stream disconnected — check engine logs");
         setRunning(false);
         es.close();
       };
     } catch {
+      setError("Cannot reach engine at localhost:8000");
       setRunning(false);
     }
-  }, [reset, coldTools.length]);
+  }, [reset, taskTotal]);
 
   useEffect(() => () => esRef.current?.close(), []);
 
   return (
-    <div className="min-h-screen bg-bg text-text">
-      <header className="border-b border-border px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="font-mono text-sm tracking-wider">ZEROG DEMO</h1>
-          <p className="text-xs text-muted">Shared Memory for Antigravity</p>
+    <div className="min-h-screen bg-bg">
+      <div className="border-b border-border bg-bg-subtle px-6 py-6">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+          <div>
+            <p className="section-label mb-1">Live benchmark</p>
+            <h1 className="text-2xl font-semibold text-text">Cold vs ZeroG</h1>
+            <p className="mt-1 text-sm text-text-secondary">
+              Real Gemini tool-calling · same GCP tasks · memory on the right
+            </p>
+            {phase && <p className="mt-2 font-mono text-xs text-accent">{phase}</p>}
+          </div>
+          <div className="flex gap-3 shrink-0">
+            <Button onClick={start} disabled={running}>
+              {running ? `Running ${taskIndex}/${taskTotal}…` : "Start demo"}
+            </Button>
+            <Button onClick={reset} disabled={running} variant="outline">
+              Reset
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-3">
-          <button
-            onClick={start}
-            disabled={running}
-            className="px-4 py-2 text-sm rounded-lg bg-accent text-white disabled:opacity-50"
-          >
-            ▶ START
-          </button>
-          <button
-            onClick={reset}
-            className="px-4 py-2 text-sm rounded-lg border border-border hover:border-accent"
-          >
-            ↻ RESET
-          </button>
-        </div>
-      </header>
+      </div>
 
-      <div className="grid md:grid-cols-2 divide-x divide-border min-h-[480px]">
+      {error && (
+        <div className="mx-6 mt-4 px-4 py-3 rounded-lg border border-error/50 bg-error/10 text-error text-sm font-mono">
+          {error}
+        </div>
+      )}
+
+      <div className="mx-auto max-w-6xl grid md:grid-cols-2 divide-x divide-border border-t border-border min-h-[480px]">
         <AgentPanel
           title="COLD SESSION"
-          subtitle="Gemini Flash · No shared memory"
+          subtitle="Gemini · no memory · discovers path from scratch"
           task={task}
           tools={coldTools}
           done={!running && coldMetrics.turns > 0}
@@ -157,7 +191,7 @@ export default function SplitScreen() {
         />
         <AgentPanel
           title="ZEROG SESSION"
-          subtitle="Gemini Flash + ZeroG"
+          subtitle="Gemini + shared memory · reuses prior traces"
           task={task}
           tools={zerogTools}
           done={!running && zerogMetrics.turns > 0}

@@ -1,132 +1,56 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { COLORS, GITHUB_URL } from "@/lib/constants";
+import Nav from "@/components/layout/Nav";
+import { Button } from "@/components/ui/button";
 
 export default function Hero() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let animId = 0;
-    let last = 0;
-    const nodes = Array.from({ length: 15 }, () => ({
-      x: Math.random(),
-      y: Math.random(),
-      vx: (Math.random() - 0.5) * 0.002,
-      vy: (Math.random() - 0.5) * 0.002,
-    }));
-
-    const resize = () => {
-      canvas.width = canvas.offsetWidth * devicePixelRatio;
-      canvas.height = canvas.offsetHeight * devicePixelRatio;
-      ctx.scale(devicePixelRatio, devicePixelRatio);
-    };
-    resize();
-    window.addEventListener("resize", resize);
-
-    const draw = (t: number) => {
-      if (t - last < 33) {
-        animId = requestAnimationFrame(draw);
-        return;
-      }
-      last = t;
-      const w = canvas.offsetWidth;
-      const h = canvas.offsetHeight;
-      ctx.clearRect(0, 0, w, h);
-
-      for (const n of nodes) {
-        n.x += n.vx;
-        n.y += n.vy;
-        if (n.x < 0 || n.x > 1) n.vx *= -1;
-        if (n.y < 0 || n.y > 1) n.vy *= -1;
-      }
-
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          const dx = (nodes[i].x - nodes[j].x) * w;
-          const dy = (nodes[i].y - nodes[j].y) * h;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 120) {
-            ctx.strokeStyle = `rgba(66, 133, 244, ${0.15 * (1 - dist / 120)})`;
-            ctx.lineWidth = 0.5;
-            ctx.beginPath();
-            ctx.moveTo(nodes[i].x * w, nodes[i].y * h);
-            ctx.lineTo(nodes[j].x * w, nodes[j].y * h);
-            ctx.stroke();
-          }
-        }
-      }
-
-      for (const n of nodes) {
-        ctx.fillStyle = "rgba(66, 133, 244, 0.25)";
-        ctx.beginPath();
-        ctx.arc(n.x * w, n.y * h, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      animId = requestAnimationFrame(draw);
-    };
-    animId = requestAnimationFrame(draw);
-
-    return () => {
-      cancelAnimationFrame(animId);
-      window.removeEventListener("resize", resize);
-    };
-  }, []);
-
   return (
-    <section className="relative min-h-screen flex flex-col">
-      <nav className="flex items-center justify-between px-8 py-6 max-w-6xl mx-auto w-full">
-        <span className="text-xl font-medium tracking-tight">ZeroG</span>
-        <div className="flex gap-6 text-sm">
-          <Link href="/demo" className="hover:text-accent transition-colors">
-            Demo
-          </Link>
-          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="hover:text-accent transition-colors">
-            GitHub
-          </a>
-        </div>
-      </nav>
+    <>
+      <Nav />
+      <section className="relative overflow-hidden border-b border-border">
+        <div className="absolute inset-0 grid-bg opacity-40" />
+        <div className="relative mx-auto max-w-6xl px-6 pb-20 pt-16 md:pt-24">
+          <div className="max-w-3xl">
+            <p className="section-label mb-4">AGI House × Google DeepMind · Track 1</p>
+            <h1 className="text-5xl font-semibold tracking-tight text-text md:text-6xl lg:text-7xl">
+              Zero cold starts.
+            </h1>
+            <p className="mt-6 text-xl text-text-secondary leading-relaxed md:text-2xl">
+              The shared memory layer for{" "}
+              <span className="font-medium text-text">Antigravity</span>. One agent learns. Every
+              agent on your team inherits the trace.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link href="/install">
+                <Button size="lg">Add to Antigravity →</Button>
+              </Link>
+              <Link href="/demo">
+                <Button size="lg" variant="outline">
+                  Live demo
+                </Button>
+              </Link>
+            </div>
+            <p className="mt-8 font-mono text-xs text-muted">
+              KNN retrieval · SQLite persistence · GraphSAGE GNN · Gemini tool-calling
+            </p>
+          </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center px-8 pb-16 text-center">
-        <h1 className="text-5xl md:text-7xl font-medium tracking-tight mb-6">
-          Zero cold starts.
-        </h1>
-        <p className="text-lg md:text-xl text-text/80 max-w-2xl mb-10 leading-relaxed">
-          The shared memory layer for Antigravity.
-          <br />
-          One agent learns. Every agent on your team benefits.
-        </p>
-        <div className="flex gap-4 mb-16">
-          <Link
-            href="/demo"
-            className="px-6 py-3 rounded-lg text-sm font-medium"
-            style={{ backgroundColor: COLORS.accent, color: "#fff" }}
-          >
-            Try the Demo →
-          </Link>
-          <Link
-            href="/graph"
-            className="px-6 py-3 rounded-lg text-sm font-medium border border-border hover:border-accent transition-colors"
-          >
-            View the Graph
-          </Link>
+          <div className="mt-16 grid gap-4 md:grid-cols-3">
+            {[
+              { label: "Memory layers", value: "4", sub: "hash → semantic → few-shot → cold" },
+              { label: "Storage", value: "SQLite", sub: "embeddings + tool sequences" },
+              { label: "Integration", value: "SKILL.md", sub: ".agents/skills/ standard" },
+            ].map((s) => (
+              <div key={s.label} className="ag-card ag-card-hover p-6">
+                <p className="text-sm text-text-secondary">{s.label}</p>
+                <p className="mt-1 text-2xl font-semibold text-text">{s.value}</p>
+                <p className="mt-1 font-mono text-xs text-muted">{s.sub}</p>
+              </div>
+            ))}
+          </div>
         </div>
-
-        <div className="w-full max-w-3xl h-48 rounded-xl overflow-hidden border border-border relative">
-          <canvas ref={canvasRef} className="w-full h-full" />
-        </div>
-
-        <p className="mt-8 font-mono text-xs text-muted">
-          Built for Antigravity · Powered by Gemini
-        </p>
-      </div>
-    </section>
+      </section>
+    </>
   );
 }

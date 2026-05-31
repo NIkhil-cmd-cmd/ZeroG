@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { LazyMotion, domAnimation, m } from "framer-motion";
 import Hero from "@/components/landing/Hero";
 import Problem from "@/components/landing/Problem";
 import HowItWorks from "@/components/landing/HowItWorks";
@@ -10,31 +10,44 @@ import Proof from "@/components/landing/Proof";
 import SkillSection from "@/components/landing/SkillSection";
 import Footer from "@/components/landing/Footer";
 
-export default function Home() {
-  useEffect(() => {
-    const els = document.querySelectorAll(".fade-in");
-    const obs = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((e) => {
-          if (e.isIntersecting) e.target.classList.add("visible");
-        });
-      },
-      { threshold: 0.1 }
-    );
-    els.forEach((el) => obs.observe(el));
-    return () => obs.disconnect();
-  }, []);
-
+function SectionReveal({ children }: { children: React.ReactNode }) {
   return (
-    <main>
-      <Hero />
-      <Problem />
-      <HowItWorks />
-      <GNNSection />
-      <WhyNow />
-      <Proof />
-      <SkillSection />
-      <Footer />
-    </main>
+    <m.div
+      initial={{ opacity: 0, y: 24 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.55 }}
+      viewport={{ once: true, amount: 0.2 }}
+    >
+      {children}
+    </m.div>
+  );
+}
+
+export default function Home() {
+  return (
+    <LazyMotion features={domAnimation}>
+      <main className="min-h-screen bg-bg">
+        <Hero />
+        <SectionReveal>
+          <Problem />
+        </SectionReveal>
+        <SectionReveal>
+          <HowItWorks />
+        </SectionReveal>
+        <SectionReveal>
+          <GNNSection />
+        </SectionReveal>
+        <SectionReveal>
+          <WhyNow />
+        </SectionReveal>
+        <SectionReveal>
+          <Proof />
+        </SectionReveal>
+        <SectionReveal>
+          <SkillSection />
+        </SectionReveal>
+        <Footer />
+      </main>
+    </LazyMotion>
   );
 }

@@ -51,27 +51,33 @@ Open [http://localhost:3000](http://localhost:3000)
 | `/demo` | Split-screen cold vs ZeroG demo (SSE) |
 | `/graph` | Force-directed GNN tool-use visualizer |
 
-## Demo Without Engine
+## Demo (real runs only)
 
-The web app includes a **simulated demo fallback** when the Python engine is offline. Click START on `/demo` — it works on Vercel without a backend.
+The demo calls **Gemini** for tool-calling and **OpenAI** for embeddings. No simulated fallback.
 
-For live Gemini runs, start the engine locally and set `ENGINE_URL=http://localhost:8000`.
+**Required in `.env`:**
+- `GEMINI_API_KEY` — agent runs
+- `OPENAI_API_KEY` — memory embeddings + GNN task conditioning
+
+```bash
+cd engine && ./run.sh server   # terminal 1
+cd web && pnpm dev             # terminal 2
+```
+
+Open `/demo` → **START** runs 3 real task pairs (cold vs ZeroG), streams live tool calls, retrains the GNN on accumulated traces.
+
+Optional: `./run.sh warmup` pre-generates traces for all 15 GCP tasks.
 
 ## Deploy to Vercel
 
-```bash
-cd web
-vercel --prod
-```
-
-Set environment variables in Vercel dashboard if connecting to a hosted engine.
+The Vercel deployment serves the **landing page and graph UI**. The live demo requires the Python engine running locally (or hosted separately) with `ENGINE_URL` set in Vercel env vars.
 
 ## The Skill
 
 Install as an Antigravity skill:
 
 ```bash
-npx skills add zerog/shared-memory
+npx skills add https://raw.githubusercontent.com/NIkhil-cmd-cmd/ZeroG/main/skill/SKILL.md
 ```
 
 See `skill/SKILL.md` for full documentation.

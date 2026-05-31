@@ -39,10 +39,10 @@ export default function ResultsChart({
   const circumference = 2 * Math.PI * 40;
 
   return (
-    <section className="border-t border-border p-6">
+    <section className="border-t border-border/60 p-6">
       <p className="font-mono text-xs text-muted mb-4">AGGREGATE</p>
       <div className="grid md:grid-cols-2 gap-6">
-        <div className="rounded-xl bg-surface border border-border p-4">
+        <div className="ag-card rounded-xl p-4">
           <p className="text-xs text-muted mb-2 font-mono">Token Cost Over Time</p>
           <svg viewBox="0 0 420 220" className="w-full">
             <defs>
@@ -50,11 +50,11 @@ export default function ResultsChart({
                 <feDropShadow dx="0" dy="0" stdDeviation="2" floodColor="#7c3aed" floodOpacity="0.5" />
               </filter>
             </defs>
-            {tokenLine(cold, "#4285f4")}
-            {tokenLine(zerog, "#7c3aed", true)}
+            {tokenLine(cold, "#4d8dff")}
+            {tokenLine(zerog, "#8b74ff", true)}
           </svg>
         </div>
-        <div className="rounded-xl bg-surface border border-border p-4">
+        <div className="ag-card rounded-xl p-4">
           <p className="text-xs text-muted mb-2 font-mono">Tool Calls Over Time</p>
           <svg viewBox="0 0 420 220" className="w-full">
             {(() => {
@@ -70,23 +70,19 @@ export default function ResultsChart({
               });
               return (
                 <>
-                  {cPts.length >= 2 && (
-                    <polyline points={cPts.join(" ")} fill="none" stroke="#4285f4" strokeWidth="2" />
-                  )}
-                  {zPts.length >= 2 && (
-                    <polyline points={zPts.join(" ")} fill="none" stroke="#7c3aed" strokeWidth="2" />
-                  )}
+                  {cPts.length >= 2 && <polyline points={cPts.join(" ")} fill="none" stroke="#4d8dff" strokeWidth="2" />}
+                  {zPts.length >= 2 && <polyline points={zPts.join(" ")} fill="none" stroke="#8b74ff" strokeWidth="2" />}
                 </>
               );
             })()}
           </svg>
         </div>
-        <div className="rounded-xl bg-surface border border-border p-4 flex items-center gap-6">
+        <div className="ag-card rounded-xl p-4 flex items-center gap-6">
           <p className="text-xs text-muted font-mono">Memory Layer Breakdown</p>
           <svg viewBox="0 0 100 100" className="w-24 h-24">
-            <circle cx="50" cy="50" r="40" fill="none" stroke="#1e1e1e" strokeWidth="12" />
+            <circle cx="50" cy="50" r="40" fill="none" stroke="#2f3f65" strokeWidth="12" />
             {layerEntries.map(([layer, count], i) => {
-              const colors = ["#34a853", "#4285f4", "#fbbc04", "#ea4335"];
+              const colors = ["#42d392", "#4d8dff", "#ffcb5a", "#ff6b7d"];
               const seg = (count / layerTotal) * circumference;
               const el = (
                 <circle
@@ -115,7 +111,7 @@ export default function ResultsChart({
             {!layerEntries.length && <div>No data yet</div>}
           </div>
         </div>
-        <div className="rounded-xl bg-surface border border-border p-4">
+        <div className="ag-card rounded-xl p-4">
           <p className="text-xs text-muted mb-2 font-mono">Savings Curve</p>
           <svg viewBox="0 0 420 220" className="w-full">
             {cold.length > 0 &&
@@ -126,9 +122,7 @@ export default function ResultsChart({
                   const savings = z ? ((c.tokens - z.tokens) / c.tokens) * 100 : 0;
                   return `${(i / Math.max(cold.length - 1, 1)) * 360 + 40},${200 - savings * 1.5}`;
                 });
-                return (
-                  <polyline points={pts.join(" ")} fill="none" stroke="#34a853" strokeWidth="2" />
-                );
+                return <polyline points={pts.join(" ")} fill="none" stroke="#42d392" strokeWidth="2" />;
               })()}
           </svg>
         </div>

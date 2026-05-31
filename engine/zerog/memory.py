@@ -1,21 +1,32 @@
 """
 ZeroG shared memory — 4-layer lookup.
 SQLite for persistence, numpy for KNN, in-memory hash cache for speed.
-No external database. Everything local.
 """
 
 import hashlib
 import json
 import os
 import sqlite3
+import time
 import numpy as np
 from pathlib import Path
 from dataclasses import dataclass, field
 from zerog.embeddings import get_embedding
 
-DB_PATH = Path(
-    os.environ.get("ZEROG_DB_PATH", str(Path(__file__).parent.parent / "zerog.db"))
-)
+_engine_root = Path(__file__).parent.parent
+_raw = os.environ.get("ZEROG_DB_PATH")
+if _raw:
+    DB_PATH = Path(_raw)
+    if not DB_PATH.is_absolute():
+        normalized = _raw.replace("\\", "/")
+        if normalized in ("./engine/zerog.db", "engine/zerog.db"):
+            DB_PATH = _engine_root / "zerog.db"
+        else:
+            DB_PATH = (_engine_root / DB_PATH).resolve()
+else:
+    DB_PATH = _engine_root / "zerog.db"
+
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
 @dataclass
@@ -41,6 +52,7 @@ class ZeroGMemory:
         self.hash_cache: dict[str, dict] = {}
         self.traces: list[dict] = []
         self.embeddings: np.ndarray | None = None
+        self.embedding_trace_idx: list[int] = []
         self._init_db()
         self._load_from_db()
 
@@ -54,11 +66,21 @@ class ZeroGMemory:
                 task_hash TEXT NOT NULL,
                 tool_sequence TEXT NOT NULL,
                 success INTEGER NOT NULL,
+                final_output TEXT,
+                cluster TEXT,
                 embedding BLOB,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """
         )
+        try:
+            conn.execute("ALTER TABLE traces ADD COLUMN final_output TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE traces ADD COLUMN cluster TEXT")
+        except sqlite3.OperationalError:
+            pass
         conn.execute("CREATE INDEX IF NOT EXISTS idx_hash ON traces(task_hash)")
         conn.commit()
         conn.close()
@@ -66,79 +88,96 @@ class ZeroGMemory:
     def _load_from_db(self):
         conn = sqlite3.connect(DB_PATH)
         rows = conn.execute(
-            "SELECT task_text, task_hash, tool_sequence, success, embedding FROM traces"
+            "SELECT task_text, task_hash, tool_sequence, success, final_output, cluster, embedding FROM traces"
         ).fetchall()
         conn.close()
-        for row in rows:
-            task_text, task_hash, tool_seq, success, emb_bytes = row
+        for i, row in enumerate(rows):
+            task_text, task_hash, tool_seq, success, final_output, cluster, emb_bytes = row
             emb = np.frombuffer(emb_bytes, dtype=np.float32) if emb_bytes else None
+            tools = json.loads(tool_seq)
             self.traces.append(
                 {
                     "task": task_text,
                     "hash": task_hash,
-                    "tools": json.loads(tool_seq),
+                    "tools": tools,
                     "success": bool(success),
+                    "final_output": final_output or "",
+                    "cluster": cluster,
                     "embedding": emb,
                 }
             )
             self.hash_cache[task_hash] = {
-                "result": f"Tools: {tool_seq}",
+                "result": final_output or f"Tools: {' → '.join(tools)}",
                 "success": bool(success),
-                "tools": json.loads(tool_seq),
+                "tools": tools,
             }
-        if self.traces:
-            valid = [t["embedding"] for t in self.traces if t["embedding"] is not None]
-            if valid:
-                self.embeddings = np.stack(valid)
+            if emb is not None:
+                self.embedding_trace_idx.append(i)
+        if self.embedding_trace_idx:
+            self.embeddings = np.stack(
+                [self.traces[i]["embedding"] for i in self.embedding_trace_idx]
+            )
 
     def _hash(self, text: str) -> str:
         return hashlib.sha256(
             " ".join(text.lower().strip().split()).encode()
         ).hexdigest()
 
-    async def lookup(self, task: str) -> LookupResult:
+    def _similarity_search(self, embedding: np.ndarray) -> tuple[int, float]:
+        norms = np.linalg.norm(self.embeddings, axis=1, keepdims=True)
+        norms = np.where(norms == 0, 1, norms)
+        normed = self.embeddings / norms
+        query_norm = embedding / (np.linalg.norm(embedding) + 1e-8)
+        similarities = normed @ query_norm
+        top_emb_idx = int(np.argmax(similarities))
+        return self.embedding_trace_idx[top_emb_idx], float(similarities[top_emb_idx])
+
+    async def lookup(self, task: str, cluster: str | None = None) -> LookupResult:
+        t0 = time.perf_counter()
         task_hash = self._hash(task)
 
         if task_hash in self.hash_cache:
             cached = self.hash_cache[task_hash]
             if cached["success"]:
                 return LookupResult(
-                    hit=True, cached_result=cached["result"], layer="exact_match"
+                    hit=True,
+                    cached_result=cached["result"],
+                    layer="exact_match",
                 )
 
         embedding = await get_embedding(task)
 
         if self.embeddings is not None and len(self.embeddings) > 0:
-            norms = np.linalg.norm(self.embeddings, axis=1, keepdims=True)
-            norms = np.where(norms == 0, 1, norms)
-            normed = self.embeddings / norms
-            query_norm = embedding / (np.linalg.norm(embedding) + 1e-8)
-            similarities = normed @ query_norm
-
-            top_idx = int(np.argmax(similarities))
-            top_sim = float(similarities[top_idx])
+            trace_idx, top_sim = self._similarity_search(embedding)
 
             if top_sim > 0.95:
-                trace = self.traces[top_idx]
+                trace = self.traces[trace_idx]
                 if trace["success"]:
                     return LookupResult(
                         hit=True,
-                        cached_result=f"Tools: {' → '.join(trace['tools'])}",
+                        cached_result=trace["final_output"]
+                        or f"Tools: {' → '.join(trace['tools'])}",
                         layer="semantic_match",
                         embedding=embedding,
                     )
 
-            if top_sim > 0.70:
-                top_k_idx = np.argsort(similarities)[-3:][::-1]
+            if top_sim > 0.65:
+                # top-k by similarity
+                norms = np.linalg.norm(self.embeddings, axis=1, keepdims=True)
+                norms = np.where(norms == 0, 1, norms)
+                normed = self.embeddings / norms
+                query_norm = embedding / (np.linalg.norm(embedding) + 1e-8)
+                sims = normed @ query_norm
+                top_k_emb = np.argsort(sims)[-3:][::-1]
                 examples = [
                     Trace(
-                        task=self.traces[idx]["task"],
-                        tool_sequence=self.traces[idx]["tools"],
-                        success=self.traces[idx]["success"],
-                        embedding=self.traces[idx]["embedding"],
-                        similarity=float(similarities[idx]),
+                        task=self.traces[self.embedding_trace_idx[idx]]["task"],
+                        tool_sequence=self.traces[self.embedding_trace_idx[idx]]["tools"],
+                        success=self.traces[self.embedding_trace_idx[idx]]["success"],
+                        embedding=self.traces[self.embedding_trace_idx[idx]]["embedding"],
+                        similarity=float(sims[idx]),
                     )
-                    for idx in top_k_idx
+                    for idx in top_k_emb
                 ]
                 return LookupResult(
                     hit=False,
@@ -147,6 +186,31 @@ class ZeroGMemory:
                     embedding=embedding,
                 )
 
+        # Same-cluster fallback: prior successful trace in this domain
+        if cluster:
+            prior = [
+                t
+                for t in self.traces
+                if t.get("cluster") == cluster and t["success"]
+            ]
+            if prior:
+                best = prior[-1]
+                return LookupResult(
+                    hit=False,
+                    examples=[
+                        Trace(
+                            task=best["task"],
+                            tool_sequence=best["tools"],
+                            success=True,
+                            embedding=best["embedding"],
+                            similarity=0.72,
+                        )
+                    ],
+                    layer="few_shot",
+                    embedding=embedding,
+                )
+
+        _ = time.perf_counter() - t0
         return LookupResult(hit=False, layer="cold_start", embedding=embedding)
 
     async def record(
@@ -154,42 +218,67 @@ class ZeroGMemory:
         task: str,
         tools: list[str],
         success: bool,
+        final_output: str = "",
         embedding: np.ndarray | None = None,
+        cluster: str | None = None,
     ):
         if embedding is None:
             embedding = await get_embedding(task)
         task_hash = self._hash(task)
         conn = sqlite3.connect(DB_PATH)
         conn.execute(
-            "INSERT INTO traces (task_text, task_hash, tool_sequence, success, embedding) VALUES (?, ?, ?, ?, ?)",
-            (task, task_hash, json.dumps(tools), int(success), embedding.tobytes()),
+            "INSERT INTO traces (task_text, task_hash, tool_sequence, success, final_output, cluster, embedding) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                task,
+                task_hash,
+                json.dumps(tools),
+                int(success),
+                final_output,
+                cluster,
+                embedding.tobytes(),
+            ),
         )
         conn.commit()
         conn.close()
+        idx = len(self.traces)
         self.traces.append(
             {
                 "task": task,
                 "hash": task_hash,
                 "tools": tools,
                 "success": success,
+                "final_output": final_output,
+                "cluster": cluster,
                 "embedding": embedding,
             }
         )
         self.hash_cache[task_hash] = {
-            "result": f"Tools: {' → '.join(tools)}",
+            "result": final_output or f"Tools: {' → '.join(tools)}",
             "success": success,
             "tools": tools,
         }
-        valid = [t["embedding"] for t in self.traces if t["embedding"] is not None]
-        if valid:
-            self.embeddings = np.stack(valid)
+        self.embedding_trace_idx.append(idx)
+        if self.embeddings is None:
+            self.embeddings = embedding.reshape(1, -1)
+        else:
+            self.embeddings = np.vstack([self.embeddings, embedding.reshape(1, -1)])
 
-    def get_stats(self) -> dict:
+    def get_stats(self, gnn_stats: dict | None = None, demo_stats: dict | None = None) -> dict:
+        recent = [
+            {
+                "task": t["task"][:80],
+                "tools": t["tools"],
+                "success": t["success"],
+            }
+            for t in self.traces[-4:]
+        ]
         return {
             "total_traces": len(self.traces),
             "successful": sum(1 for t in self.traces if t["success"]),
             "unique_tasks": len(self.hash_cache),
-            "gnn_active": len(self.traces) >= 50,
+            "recent_traces": recent,
+            "gnn": gnn_stats or {"active": False},
+            "demo": demo_stats or {},
         }
 
     def get_graph(self) -> dict:
@@ -202,8 +291,12 @@ class ZeroGMemory:
                 key = (tools[i], tools[i + 1])
                 edges[key] = edges.get(key, 0) + 1
         return {
-            "nodes": [{"id": k, "count": v} for k, v in nodes.items()],
+            "nodes": [{"id": k, "count": v} for k, v in sorted(nodes.items())],
             "edges": [
-                {"source": k[0], "target": k[1], "weight": v} for k, v in edges.items()
+                {"source": k[0], "target": k[1], "weight": v}
+                for k, v in sorted(edges.items())
             ],
         }
+
+    def all_traces(self) -> list[dict]:
+        return self.traces
