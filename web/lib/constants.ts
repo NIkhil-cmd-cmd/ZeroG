@@ -27,6 +27,7 @@ export const REPO_CLONE = "git clone https://github.com/NIkhil-cmd-cmd/ZeroG.git
 
 export const NAV_LINKS = [
   { href: "/#architecture", label: "Architecture" },
+  { href: "/pitch", label: "Pitch" },
   { href: "/demo", label: "Demo" },
   { href: "/graph", label: "Graph" },
   { href: "/install", label: "Install Skill" },
