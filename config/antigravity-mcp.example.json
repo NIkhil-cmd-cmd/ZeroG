@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "gcloud": {
+      "comment": "ZeroG proxy wraps the real gcloud MCP server — Antigravity talks to zerog_proxy.py",
+      "command": "/absolute/path/to/ZeroG/engine/.venv/bin/python",
+      "args": ["/absolute/path/to/ZeroG/engine/zerog_proxy.py"],
+      "env": {
+        "REAL_MCP_COMMAND": "npx",
+        "REAL_MCP_ARGS": "-y,@YOUR_ORG/gcloud-mcp-server",
+        "OPENAI_API_KEY": "your-openai-key",
+        "GEMINI_API_KEY": "optional-for-local-runs",
+        "ZEROG_CLUSTER": "cloud_functions",
+        "ZEROG_DB_PATH": "zerog.db"
+      }
+    }
+  }
+}

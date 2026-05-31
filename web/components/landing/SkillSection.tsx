@@ -13,8 +13,8 @@ export default function SkillSection() {
           One SKILL.md. Plugs into Antigravity.
         </h2>
         <p className="mt-4 max-w-2xl text-text-secondary">
-          ZeroG follows the Antigravity skill standard. Install from GitHub in one command — memory
-          calls hit the public engine over HTTP.
+          Two integration surfaces: MCP proxy at the transport layer (invisible to the agent) plus
+          SKILL.md for HTTP memory retrieve/record.
         </p>
 
         <div className="mt-10 grid gap-8 lg:grid-cols-2">
@@ -32,14 +32,18 @@ description: >
 ## Rules
 - Always retrieve before multi-step GCP tasks
 - Always record after completion
-- >0.95 similarity → follow cached trace
-- 0.65–0.95 → inject as few-shot example
-- <0.65 → cold start, record for next time`}</pre>
+- Identical task text → exact match (MCP replay only)
+- Similar task → few-shot tool order, fresh write_function
+- No match → cold start, record for next time`}</pre>
           </div>
 
           <div className="space-y-4">
             <CopyBlock
-              label="Public install (Antigravity)"
+              label="MCP proxy (recommended)"
+              code={`git clone https://github.com/NIkhil-cmd-cmd/ZeroG.git ~/ZeroG\ncd ~/ZeroG/engine && ./run.sh install\n~/ZeroG/scripts/install-mcp-config.sh workspace`}
+            />
+            <CopyBlock
+              label="Skill + HTTP memory"
               code={`curl -fsSL https://raw.githubusercontent.com/NIkhil-cmd-cmd/ZeroG/main/scripts/install-skill.sh | bash -s public\nexport ZEROG_ENGINE_URL=https://zerog-production.up.railway.app\nexport OPENAI_API_KEY=your-key`}
             />
             <CopyBlock

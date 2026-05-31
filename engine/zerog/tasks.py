@@ -106,16 +106,24 @@ def get_tasks_for_demo(cluster: str | None = None, count: int = 10) -> list[dict
 
 
 def get_demo_pairs(cluster: str | None = None, count: int = 4) -> list[dict]:
-    """Cold and ZeroG always run different tasks in the same cluster."""
+    """Cold and ZeroG run different tasks; zerog never repeats a prior cold task in this run."""
     pool = [t for t in TASKS if t["cluster"] == cluster] if cluster else TASKS
     if len(pool) < 2:
         raise ValueError(f"Need at least 2 tasks in cluster {cluster!r}")
     count = min(count, len(pool) - 1)
     pairs = []
+    prior_cold_ids: set[str] = set()
+    used_zerog_ids: set[str] = set()
     for i in range(count):
         cold = pool[i % len(pool)]
-        zerog = pool[(i + 2) % len(pool)]
-        if zerog["id"] == cold["id"]:
-            zerog = pool[(i + 1) % len(pool)]
+        blocked = prior_cold_ids | used_zerog_ids
+        candidates = [t for t in pool if t["id"] != cold["id"] and t["id"] not in blocked]
+        if not candidates:
+            candidates = [t for t in pool if t["id"] != cold["id"] and t["id"] not in prior_cold_ids]
+        if not candidates:
+            candidates = [t for t in pool if t["id"] != cold["id"]]
+        zerog = candidates[0]
+        prior_cold_ids.add(cold["id"])
+        used_zerog_ids.add(zerog["id"])
         pairs.append({"index": i, "cold": cold, "zerog": zerog})
     return pairs

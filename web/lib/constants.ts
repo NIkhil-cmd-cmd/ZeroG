@@ -14,11 +14,11 @@ export const COLORS = {
 } as const;
 
 export const GITHUB_URL = "https://github.com/NIkhil-cmd-cmd/ZeroG";
-export const WEB_URL = "https://web-pi-nine-22.vercel.app";
+export const WEB_URL = "https://zerogagi.vercel.app";
 export const PUBLIC_ENGINE_URL =
   process.env.NEXT_PUBLIC_ENGINE_URL ||
   process.env.ENGINE_URL ||
-  "https://zerog-production.up.railway.app";
+  "https://soul-hung-entered-logos.trycloudflare.com";
 
 export const ENGINE_URL =
   process.env.ENGINE_URL || process.env.NEXT_PUBLIC_ENGINE_URL || PUBLIC_ENGINE_URL;
@@ -29,7 +29,6 @@ export const NAV_LINKS = [
   { href: "/#architecture", label: "Architecture" },
   { href: "/pitch", label: "Pitch" },
   { href: "/demo", label: "Demo" },
-  { href: "/graph", label: "Graph" },
   { href: "/install", label: "Install Skill" },
 ] as const;
 
@@ -76,6 +75,7 @@ export type EngineStats = {
     cold_tokens_series?: number[];
     zerog_tokens_series?: number[];
     token_savings_pct?: number;
+    pattern_savings_pct?: number;
     speedup_ratio?: number;
     recall_latency_ms?: number;
     tasks_run?: number;

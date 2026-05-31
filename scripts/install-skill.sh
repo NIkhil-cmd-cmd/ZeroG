@@ -5,7 +5,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GITHUB_REPO="https://github.com/NIkhil-cmd-cmd/ZeroG.git"
 ZEROG_HOME="${ZEROG_HOME:-$HOME/ZeroG}"
-PUBLIC_ENGINE_URL="${ZEROG_ENGINE_URL:-https://zerog-production.up.railway.app}"
+PUBLIC_ENGINE_URL="${ZEROG_ENGINE_URL:-https://soul-hung-entered-logos.trycloudflare.com}"
 SCOPE="${1:-workspace}"
 TARGET_NAME="zerog-shared-memory"
 

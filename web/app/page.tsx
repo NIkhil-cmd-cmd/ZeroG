@@ -4,7 +4,6 @@ import { LazyMotion, domAnimation, m } from "framer-motion";
 import Hero from "@/components/landing/Hero";
 import Problem from "@/components/landing/Problem";
 import HowItWorks from "@/components/landing/HowItWorks";
-import GNNSection from "@/components/landing/GNNSection";
 import WhyNow from "@/components/landing/WhyNow";
 import Proof from "@/components/landing/Proof";
 import SkillSection from "@/components/landing/SkillSection";
@@ -33,9 +32,6 @@ export default function Home() {
         </SectionReveal>
         <SectionReveal>
           <HowItWorks />
-        </SectionReveal>
-        <SectionReveal>
-          <GNNSection />
         </SectionReveal>
         <SectionReveal>
           <WhyNow />

@@ -115,27 +115,68 @@ export default function ForceGraph({ compact = false }: { compact?: boolean }) {
       }
 
       ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#f8f9fa";
+      ctx.fillRect(0, 0, w, h);
+
+      // subtle grid
+      ctx.strokeStyle = "#e8eaed";
+      ctx.lineWidth = 1;
+      for (let gx = 0; gx < w; gx += 40) {
+        ctx.beginPath();
+        ctx.moveTo(gx, 0);
+        ctx.lineTo(gx, h);
+        ctx.stroke();
+      }
+      for (let gy = 0; gy < h; gy += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, gy);
+        ctx.lineTo(w, gy);
+        ctx.stroke();
+      }
+
       const maxW = Math.max(...es.map((e) => e.weight), 1);
       for (const e of es) {
         const s = map[e.source];
         const t = map[e.target];
         if (!s || !t) continue;
-        const alpha = 0.2 + (e.weight / maxW) * 0.6;
-        ctx.strokeStyle = showGnn ? `rgba(147, 52, 230, ${alpha})` : `rgba(26, 115, 232, ${alpha * 0.6})`;
-        ctx.lineWidth = 0.5 + (e.weight / maxW) * 2;
+        const alpha = 0.25 + (e.weight / maxW) * 0.55;
+        ctx.strokeStyle = showGnn ? `rgba(147, 52, 230, ${alpha})` : `rgba(26, 115, 232, ${alpha})`;
+        ctx.lineWidth = 1 + (e.weight / maxW) * 2.5;
         ctx.beginPath();
         ctx.moveTo(s.x, s.y);
         ctx.lineTo(t.x, t.y);
         ctx.stroke();
+
+        // arrow head
+        const angle = Math.atan2(t.y - s.y, t.x - s.x);
+        const ax = t.x - Math.cos(angle) * (t.size + 6);
+        const ay = t.y - Math.sin(angle) * (t.size + 6);
+        ctx.fillStyle = ctx.strokeStyle as string;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(ax - 6 * Math.cos(angle - 0.4), ay - 6 * Math.sin(angle - 0.4));
+        ctx.lineTo(ax - 6 * Math.cos(angle + 0.4), ay - 6 * Math.sin(angle + 0.4));
+        ctx.closePath();
+        ctx.fill();
       }
       for (const n of ns) {
         ctx.fillStyle = n.color;
         ctx.beginPath();
         ctx.arc(n.x, n.y, n.size, 0, Math.PI * 2);
         ctx.fill();
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        if (!compact) {
+          ctx.fillStyle = "#3c4043";
+          ctx.font = "10px ui-monospace, monospace";
+          ctx.fillText(n.id.length > 14 ? `${n.id.slice(0, 12)}…` : n.id, n.x + n.size + 5, n.y + 4);
+        }
         if (hovered === n.id) {
           ctx.strokeStyle = "#1a73e8";
-          ctx.lineWidth = 2;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, n.size + 3, 0, Math.PI * 2);
           ctx.stroke();
         }
       }

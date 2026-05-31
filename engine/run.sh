@@ -25,10 +25,13 @@ case "${1:-server}" in
     python warmup.py
     ;;
   server)
-    uvicorn server:app --reload --port 8000
+    uvicorn server:app --reload --host 0.0.0.0 --port 8000
+    ;;
+  proxy)
+    python zerog_proxy.py
     ;;
   *)
-    echo "Usage: ./run.sh [install|warmup|server]"
+    echo "Usage: ./run.sh [install|warmup|server|proxy]"
     exit 1
     ;;
 esac

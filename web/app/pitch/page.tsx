@@ -39,11 +39,11 @@ const sections = [
     id: "implementation",
     eyebrow: "03",
     label: "Implementation",
-    title: "The system is a skill, a memory engine, and a graph learner.",
-    body: "The web app presents the pitch. The engine stores traces, retrieves similar work, and streams demo events. A GNN learns the tool transitions that appear in real sessions so the graph view can expose how the memory behaves.",
+    title: "The system is a skill, a memory engine, and a trace learner.",
+    body: "The web app presents the pitch. The engine stores traces, retrieves similar work, and streams demo events. A GNN learns tool transitions from real sessions to improve recall hints over time.",
     cards: [
       "SKILL.md tells Antigravity to retrieve before work and record after work.",
-      "FastAPI exposes health, stats, stream, graph, memory, and train endpoints.",
+      "FastAPI exposes health, stats, stream, memory, and train endpoints.",
       "OpenAI embeddings and SQLite back the retrieval layer.",
     ],
   },
@@ -51,12 +51,12 @@ const sections = [
     id: "demo",
     eyebrow: "04",
     label: "Demo",
-    title: "The live benchmark compares a cold agent against ZeroG on related tasks.",
-    body: "The demo runs paired Cloud Functions tasks from the same cluster. The cold agent discovers the path first. ZeroG then gets a different task, retrieves a nearby pattern, and finishes with less redundant exploration.",
+    title: "The live benchmark compares cold exploration against ZeroG on the same task.",
+    body: "Each pair runs the same Cloud Functions deploy task twice. Cold must read docs and probe permissions. ZeroG retrieves a teammate trace and skips straight to the deploy path.",
     cards: [
-      "Same cluster, different service targets.",
+      "Same task per pair — fair token comparison.",
       "Real tool calls through Gemini or Anthropic.",
-      "Metrics show turns, tokens, latency, and recall layer.",
+      "Metrics show turns, tokens, exploration steps skipped, and recall layer.",
     ],
   },
   {
@@ -171,9 +171,9 @@ export default function PitchPage() {
               </div>
               <div className="grid gap-0 md:grid-cols-3">
                 {[
-                  ["Cold", "new task", "discovers a path from scratch"],
-                  ["ZeroG", "nearby task", "reuses memory from a similar trace"],
-                  ["Graph", "tool transitions", "updates from the accumulated runs"],
+                  ["Cold", "same task", "read_docs and permission probing"],
+                  ["ZeroG", "same task", "recall + skip exploration"],
+                  ["Record", "tool path", "stored for the next agent"],
                 ].map(([title, subtitle, desc]) => (
                   <div key={title} className="border-b border-border p-5 md:border-b-0 md:border-r last:border-r-0">
                     <p className="font-mono text-xs uppercase text-accent">{title}</p>
@@ -205,15 +205,15 @@ export default function PitchPage() {
                   More tasks, more traces, more reusable workflows.
                 </p>
                 <p className="mt-4 text-text-secondary">
-                  As the trace set grows, retrieval improves, the graph becomes denser, and the
-                  demo becomes a better proxy for how agents can share operational knowledge.
+                  As the trace set grows, retrieval improves and the demo becomes a better proxy
+                  for how agents can share operational knowledge.
                 </p>
               </div>
             </div>
 
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link href="/graph">
-                <Button variant="outline">View graph</Button>
+              <Link href="/demo">
+                <Button variant="outline">Run demo</Button>
               </Link>
               <Link href="/">
                 <Button variant="ghost">Back to landing</Button>

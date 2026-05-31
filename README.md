@@ -1,6 +1,6 @@
 # ZeroG
 
-**Zero cold starts.** The shared memory layer for Antigravity.
+**Built for Antigravity Enterprise.** The shared memory layer for Antigravity agents.
 
 When an Antigravity agent solves a task, ZeroG writes the trace into shared memory. When the next agent hits a similar task, ZeroG retrieves that trace and injects it as context. No retraining. No fine-tuning. Just a SKILL.md and a memory backend.
 
@@ -53,7 +53,20 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## Add to Antigravity (public)
 
-One command — clones GitHub, installs skill globally, uses public engine:
+### Option A — MCP proxy (recommended)
+
+Antigravity uses MCP for external tools. Point your MCP config at ZeroG instead of the real server:
+
+```bash
+git clone https://github.com/NIkhil-cmd-cmd/ZeroG.git ~/ZeroG
+cd ~/ZeroG/engine && ./run.sh install
+~/ZeroG/scripts/install-mcp-config.sh workspace
+# Edit .agents/mcp.json → REAL_MCP_COMMAND / REAL_MCP_ARGS
+```
+
+See `skill/MCP.md` for architecture and env vars.
+
+### Option B — Skill + HTTP memory
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/NIkhil-cmd-cmd/ZeroG/main/scripts/install-skill.sh | bash -s public

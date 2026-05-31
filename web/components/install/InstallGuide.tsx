@@ -49,6 +49,9 @@ export default function InstallGuide() {
         <div className="ag-card p-6 font-mono text-sm text-text-secondary leading-relaxed">
           <pre className="whitespace-pre-wrap">{`Antigravity Agent
     │
+    ├─ MCP (stdio) ──▶ zerog_proxy.py  ← protocol-level cache (recommended)
+    │                      └─ intercept tools/call → memory → forward/record
+    │
     ├─ reads  .agents/skills/zerog-shared-memory/SKILL.md
     │
     ├─ retrieve ──POST──▶ ${ENGINE_URL}/memory/retrieve
@@ -59,6 +62,36 @@ export default function InstallGuide() {
     └─ record   ──POST──▶ ${ENGINE_URL}/memory/record
                            └─ SQLite + OpenAI embeddings + GNN retrain`}</pre>
         </div>
+      </section>
+
+      {/* MCP proxy */}
+      <section className="mb-16">
+        <h2 className="text-2xl font-semibold text-text mb-4">MCP proxy (invisible infrastructure)</h2>
+        <p className="text-text-secondary mb-4 text-sm leading-relaxed">
+          Antigravity uses MCP for all external tools. ZeroG sits between Antigravity and the real
+          gcloud/BigQuery MCP server — no prompt changes, no agent awareness. Exact cache hits skip
+          the upstream call entirely.
+        </p>
+        <div className="ag-card p-6 mb-4 font-mono text-xs text-text-secondary whitespace-pre-wrap">{`Antigravity  →  ZeroG Proxy (zerog_proxy.py)  →  Real MCP Server
+                 1. tools/call intercepted
+                 2. memory lookup (hash → semantic → few-shot)
+                 3. cache hit → return cached result
+                 4. else → forward + record trace`}</div>
+        <div className="space-y-4">
+          <CopyBlock
+            label="Install MCP config (workspace)"
+            code={`git clone ${GITHUB_URL}.git ~/ZeroG\ncd ~/ZeroG/engine && ./run.sh install\n~/ZeroG/scripts/install-mcp-config.sh workspace`}
+          />
+          <CopyBlock
+            label="Example .agents/mcp.json snippet"
+            code={`{\n  "mcpServers": {\n    "gcloud": {\n      "command": "~/ZeroG/engine/.venv/bin/python",\n      "args": ["~/ZeroG/engine/zerog_proxy.py"],\n      "env": {\n        "REAL_MCP_COMMAND": "npx",\n        "REAL_MCP_ARGS": "-y,@YOUR_ORG/gcloud-mcp-server",\n        "OPENAI_API_KEY": "your-key",\n        "ZEROG_CLUSTER": "cloud_functions"\n      }\n    }\n  }\n}`}
+          />
+        </div>
+        <p className="mt-4 text-sm text-text-secondary">
+          See <code className="text-xs bg-bg-code px-1 rounded">skill/MCP.md</code> and{" "}
+          <code className="text-xs bg-bg-code px-1 rounded">config/antigravity-mcp.example.json</code>{" "}
+          in the repo.
+        </p>
       </section>
 
       {/* Step 1 — public install */}

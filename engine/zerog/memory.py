@@ -150,50 +150,28 @@ class ZeroGMemory:
         embedding = await get_embedding(task)
 
         if self.embeddings is not None and len(self.embeddings) > 0:
-            trace_idx, top_sim = self._similarity_search(embedding)
+            norms = np.linalg.norm(self.embeddings, axis=1, keepdims=True)
+            norms = np.where(norms == 0, 1, norms)
+            normed = self.embeddings / norms
+            query_norm = embedding / (np.linalg.norm(embedding) + 1e-8)
+            sims = normed @ query_norm
+            top_k_emb = np.argsort(sims)[-3:][::-1]
 
-            if top_sim > 0.95:
-                trace = self.traces[trace_idx]
-                if trace["success"]:
-                    return LookupResult(
-                        hit=True,
-                        cached_result=trace["final_output"]
-                        or f"Tools: {' → '.join(trace['tools'])}",
-                        cached_tools=trace["tools"],
-                        layer="semantic_match",
-                        embedding=embedding,
-                    )
-
-            if top_sim > 0.65:
-                # top-k by similarity
-                norms = np.linalg.norm(self.embeddings, axis=1, keepdims=True)
-                norms = np.where(norms == 0, 1, norms)
-                normed = self.embeddings / norms
-                query_norm = embedding / (np.linalg.norm(embedding) + 1e-8)
-                sims = normed @ query_norm
-                top_k_emb = np.argsort(sims)[-3:][::-1]
-                examples = [
-                    Trace(
-                        task=self.traces[self.embedding_trace_idx[idx]]["task"],
-                        tool_sequence=self.traces[self.embedding_trace_idx[idx]]["tools"],
-                        success=self.traces[self.embedding_trace_idx[idx]]["success"],
-                        embedding=self.traces[self.embedding_trace_idx[idx]]["embedding"],
-                        similarity=float(sims[idx]),
-                    )
-                    for idx in top_k_emb
-                    if self.traces[self.embedding_trace_idx[idx]]["success"]
-                ]
-                if not examples:
-                    examples = [
-                        Trace(
-                            task=self.traces[self.embedding_trace_idx[idx]]["task"],
-                            tool_sequence=self.traces[self.embedding_trace_idx[idx]]["tools"],
-                            success=self.traces[self.embedding_trace_idx[idx]]["success"],
-                            embedding=self.traces[self.embedding_trace_idx[idx]]["embedding"],
-                            similarity=float(sims[idx]),
-                        )
-                        for idx in top_k_emb[:1]
-                    ]
+            # Similar tasks share tool ORDER only — never auto-replay (hit=False always).
+            # Only identical task text (hash above) may skip execution (MCP / exact repeat).
+            examples = [
+                Trace(
+                    task=self.traces[self.embedding_trace_idx[idx]]["task"],
+                    tool_sequence=self.traces[self.embedding_trace_idx[idx]]["tools"],
+                    success=self.traces[self.embedding_trace_idx[idx]]["success"],
+                    embedding=self.traces[self.embedding_trace_idx[idx]]["embedding"],
+                    similarity=float(sims[idx]),
+                )
+                for idx in top_k_emb
+                if self.traces[self.embedding_trace_idx[idx]]["success"]
+                and float(sims[idx]) > 0.50
+            ]
+            if examples:
                 return LookupResult(
                     hit=False,
                     examples=examples,
@@ -210,6 +188,12 @@ class ZeroGMemory:
             ]
             if prior:
                 best = prior[-1]
+                best_emb = best.get("embedding")
+                sim = 0.0
+                if best_emb is not None:
+                    qn = embedding / (np.linalg.norm(embedding) + 1e-8)
+                    bn = best_emb / (np.linalg.norm(best_emb) + 1e-8)
+                    sim = float(np.dot(qn, bn))
                 return LookupResult(
                     hit=False,
                     examples=[
@@ -217,8 +201,8 @@ class ZeroGMemory:
                             task=best["task"],
                             tool_sequence=best["tools"],
                             success=True,
-                            embedding=best["embedding"],
-                            similarity=0.78,
+                            embedding=best_emb,
+                            similarity=sim,
                         )
                     ],
                     layer="few_shot",

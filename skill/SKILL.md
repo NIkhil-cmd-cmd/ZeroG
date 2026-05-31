@@ -6,11 +6,38 @@ description: >
   traces via the ZeroG engine. After completing, record the tool sequence
   and outcome. Use for Cloud Functions, BigQuery, IAM, and deploy workflows.
   Do not use for real-time external data or user-specific preferences.
+  For Antigravity demos read skill/DEMO.md — use zerog_demo.sh and memory_client.sh only; never import ZeroGHarness.
 ---
 
 # ZeroG: Shared Memory for Antigravity
 
-## Public install (one command)
+**Antigravity demo:** read `DEMO.md` in this folder. Use `scripts/zerog_demo.sh` + `scripts/memory_client.sh` only.
+
+## DO NOT (Antigravity)
+
+- Do **not** create Python files (`run_harness_task.py`, etc.)
+- Do **not** `import` from `zerog.harness` or `zerog.memory`
+- Do **not** call engine `/run` or `/train` from Antigravity — that is the web UI demo only
+- Do **use terminal**: `zerog_demo.sh` → your GCP tools → `memory_client.sh record`
+
+ZeroG integrates at **two surfaces**:
+
+1. **MCP proxy (recommended for hackathon demo)** — `engine/zerog_proxy.py` sits between Antigravity and real MCP servers. The agent doesn't know ZeroG exists; tool calls get faster via cached traces. See `skill/MCP.md`.
+2. **SKILL.md (this file)** — tells the agent about shared memory and HTTP retrieve/record when not using the proxy.
+
+## MCP proxy (invisible infrastructure)
+
+```bash
+cd ~/ZeroG/engine && ./run.sh install
+~/ZeroG/scripts/install-mcp-config.sh workspace
+# Edit .agents/mcp.json → set REAL_MCP_COMMAND / REAL_MCP_ARGS to your gcloud MCP server
+```
+
+Antigravity spawns `zerog_proxy.py` instead of the real server. ZeroG intercepts every `tools/call`, checks memory, forwards if needed, records traces.
+
+Full docs: `skill/MCP.md` · example config: `config/antigravity-mcp.example.json`
+
+## Public install (skill only)
 
 From any machine — clones the repo and installs the skill globally:
 
@@ -32,14 +59,14 @@ Restart your Antigravity agent session after installing.
 Set these in your shell, Antigravity workspace env, or `~/.zshrc`:
 
 ```bash
-export ZEROG_ENGINE_URL=https://zerog-production.up.railway.app
+export ZEROG_ENGINE_URL=http://localhost:8000
 export OPENAI_API_KEY=your-openai-key          # embeddings (retrieve/record)
 export GEMINI_API_KEY=your-gemini-key          # optional — only if agent runs tasks via engine
 ```
 
 Public endpoints:
-- **Engine API:** https://zerog-production.up.railway.app
-- **Web demo:** https://web-pi-nine-22.vercel.app
+- **Engine API:** https://soul-hung-entered-logos.trycloudflare.com
+- **Web demo:** https://zerogagi.vercel.app
 - **GitHub:** https://github.com/NIkhil-cmd-cmd/ZeroG
 
 Health check:
@@ -57,17 +84,38 @@ curl -s "$ZEROG_ENGINE_URL/health"
 - **Always retrieve first** before multi-step GCP work
 - **Always record after** task completion
 - **Similarity thresholds** (returned in `layer` field):
-  - `exact_match` / `semantic_match` → follow cached trace (minimal tokens)
-  - `few_shot` → inject similar trace from same cluster (transfers across services)
+  - `exact_match` → only when task text is **identical** (byte-level hash). Safe to replay in MCP.
+  - `few_shot` → similar task: reuse **tool order only**, always run fresh `write_function` for this task
   - `cold_start` → proceed normally, record for the team
+  - Never auto-replay on embedding similarity alone — different triggers need different code
+
+## Antigravity agent protocol (follow exactly)
+
+When the user asks to use this skill:
+
+1. **Run shell only** — never write Python that imports `zerog`
+2. **Step 1:** `scripts/zerog_demo.sh "<task>" cloud_functions` (or full path `~/ChorusAI/skill/scripts/zerog_demo.sh`)
+3. **Step 2:** Tell user the `layer`, similarity, and tool order from output
+4. **Step 3:** Execute the GCP task yourself with Antigravity tools — reuse tool **order**, not prior code
+5. **Step 4:** `scripts/memory_client.sh record "<task>" "tool1,tool2,..." success cloud_functions`
+
+If you catch yourself writing `run_harness_task.py` or `from zerog.harness import` — stop and use the shell scripts above.
 
 ## Tools
 
 ### Retrieve similar traces
 
 ```bash
-export ZEROG_ENGINE_URL="${ZEROG_ENGINE_URL:-https://zerog-production.up.railway.app}"
-~/ZeroG/skill/scripts/memory_client.sh retrieve \
+export ZEROG_ENGINE_URL="${ZEROG_ENGINE_URL:-http://localhost:8000}"
+~/ChorusAI/skill/scripts/zerog_demo.sh \
+  "Deploy Cloud Function with Firestore trigger" \
+  cloud_functions
+```
+
+Or lower-level:
+
+```bash
+~/ChorusAI/skill/scripts/memory_client.sh retrieve \
   "Deploy Cloud Function with Firestore trigger" \
   cloud_functions
 ```
@@ -85,7 +133,7 @@ Returns: `{ hit, layer, cached_result, examples: [{ task, tools, similarity }] }
 ### Record completed trace
 
 ```bash
-~/ZeroG/skill/scripts/memory_client.sh record \
+~/ChorusAI/skill/scripts/memory_client.sh record \
   "Deploy Cloud Function with Firestore trigger" \
   "write_function,set_iam,gcloud_deploy,gcloud_check_status,DONE" \
   success \

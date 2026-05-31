@@ -1,9 +1,9 @@
 import { Card, CardContent } from "@/components/ui/card";
 
 const LAYER_LABELS: Record<string, string> = {
-  exact_match: "Exact match — returned cached trace (0 tokens)",
-  semantic_match: "Semantic match — high-similarity cache hit",
-  few_shot: "Few-shot — injected similar past session",
+  exact_match: "Exact duplicate task — cached replay (identical task text only)",
+  semantic_match: "High similarity — pattern hint (still executes fresh)",
+  few_shot: "Pattern transfer — reused tool order, new task-specific code",
   cold_start: "Cold start — no similar traces yet",
 };
 
@@ -55,7 +55,7 @@ export default function AgentPanel({
           ))}
           {done && (
             <div className="mt-4 pt-3 border-t border-border">
-              <p className="text-success">✓ Done — {metrics.turns} tool calls</p>
+              <p className="text-success">✓ Done — {metrics.turns} model calls</p>
               {zerog && metrics.layer && (
                 <p className="text-violet mt-1 text-[11px]">Memory layer: {LAYER_LABELS[metrics.layer] ?? metrics.layer}</p>
               )}
@@ -65,7 +65,7 @@ export default function AgentPanel({
       </Card>
 
       <div className="grid grid-cols-2 gap-2 mt-4 font-mono text-xs text-muted">
-        <span>Tool calls: {metrics.turns}</span>
+        <span>Model calls: {metrics.turns}</span>
         <span>Tokens: {metrics.tokens.toLocaleString()}</span>
         <span>Cost: ${metrics.cost.toFixed(4)}</span>
         <span>Time: {metrics.latency.toFixed(0)}s</span>

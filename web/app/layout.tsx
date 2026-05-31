@@ -14,9 +14,9 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ZeroG — Shared Memory for Antigravity",
+  title: "ZeroG — Shared Memory for Antigravity Enterprise",
   description:
-    "Shared memory layer for Google Antigravity agents. KNN trace retrieval, GNN tool prediction, team-wide cold-start elimination.",
+    "Shared memory layer for Google Antigravity Enterprise agents. KNN trace retrieval, GNN tool prediction, team-wide pattern transfer.",
 };
 
 export default function RootLayout({

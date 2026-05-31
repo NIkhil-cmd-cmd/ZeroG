@@ -2,26 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import AgentPanel from "./AgentPanel";
+import DemoLogPanel from "./DemoLogPanel";
 import MetricsBar from "./MetricsBar";
-import ResultsChart from "./ResultsChart";
 import { Button } from "@/components/ui/button";
+import type { DemoLogEntry } from "@/lib/demoTypes";
 
 type ToolEvent = {
   agent: "cold" | "zerog";
   tool: string;
   detail?: string;
   status?: string;
-};
-
-type TaskResult = {
-  agent: "cold" | "zerog";
-  index: number;
-  turns: number;
-  tokens: number;
-  cost: number;
-  latency: number;
-  layer?: string;
-  success: boolean;
 };
 
 export default function SplitScreen() {
@@ -36,8 +26,9 @@ export default function SplitScreen() {
   const [zerogTools, setZerogTools] = useState<ToolEvent[]>([]);
   const [coldMetrics, setColdMetrics] = useState({ turns: 0, tokens: 0, cost: 0, latency: 0 });
   const [zerogMetrics, setZerogMetrics] = useState({ turns: 0, tokens: 0, cost: 0, latency: 0, layer: "" });
-  const [results, setResults] = useState<TaskResult[]>([]);
-  const [layers, setLayers] = useState<Record<string, number>>({});
+  const [logEntries, setLogEntries] = useState<DemoLogEntry[]>([]);
+  const [runId, setRunId] = useState<string | null>(null);
+  const [demoStats, setDemoStats] = useState<Record<string, number>>({});
   const esRef = useRef<EventSource | null>(null);
 
   const reset = useCallback(async () => {
@@ -51,8 +42,9 @@ export default function SplitScreen() {
     setZerogTools([]);
     setColdMetrics({ turns: 0, tokens: 0, cost: 0, latency: 0 });
     setZerogMetrics({ turns: 0, tokens: 0, cost: 0, latency: 0, layer: "" });
-    setResults([]);
-    setLayers({});
+    setLogEntries([]);
+    setRunId(null);
+    setDemoStats({});
     const res = await fetch("/api/reset", { method: "POST" });
     if (!res.ok) {
       const data = await res.json();
@@ -69,7 +61,7 @@ export default function SplitScreen() {
       const res = await fetch("/api/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ count: 4, cluster: "cloud_functions" }),
+        body: JSON.stringify({ count: 2, cluster: "cloud_functions" }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -78,11 +70,14 @@ export default function SplitScreen() {
         return;
       }
       const { run_id } = data;
+      setRunId(run_id);
       const es = new EventSource(`/api/stream?run_id=${run_id}`);
       esRef.current = es;
 
       es.onmessage = (ev) => {
         const data = JSON.parse(ev.data);
+        setLogEntries((p) => [...p, { ...data, ts: data.ts ?? Date.now() / 1000 }]);
+
         if (data.type === "error") {
           setError(data.message);
           setRunning(false);
@@ -90,12 +85,14 @@ export default function SplitScreen() {
           return;
         }
         if (data.type === "task_start") {
-          setColdTask(data.cold_task || data.task || "");
-          setZerogTask(data.zerog_task || "");
+          setColdTask(data.compare_task || data.zerog_task || data.task || "");
+          setZerogTask(data.compare_task || data.zerog_task || "");
           setTaskIndex(data.index + 1);
           setTaskTotal(data.total ?? 4);
           setColdTools([]);
           setZerogTools([]);
+          setColdMetrics({ turns: 0, tokens: 0, cost: 0, latency: 0 });
+          setZerogMetrics({ turns: 0, tokens: 0, cost: 0, latency: 0, layer: "" });
         }
         if (data.type === "phase") {
           setPhase(data.message);
@@ -111,11 +108,10 @@ export default function SplitScreen() {
           else setZerogTools((p) => [...p, entry]);
         }
         if (data.type === "task_complete") {
-          const r: TaskResult = data;
-          setResults((p) => [...p, r]);
+          const modelTurns = data.model_turns ?? data.turns;
           if (data.agent === "cold") {
             setColdMetrics({
-              turns: data.turns,
+              turns: modelTurns,
               tokens: data.tokens,
               cost: data.cost,
               latency: data.latency,
@@ -123,19 +119,19 @@ export default function SplitScreen() {
             setPhase(`Task ${data.index + 1}/${taskTotal} · Cold done — starting ZeroG…`);
           } else {
             setZerogMetrics({
-              turns: data.turns,
+              turns: modelTurns,
               tokens: data.tokens,
               cost: data.cost,
               latency: data.latency,
               layer: data.layer || "",
             });
-            if (data.layer) {
-              setLayers((p) => ({ ...p, [data.layer]: (p[data.layer] || 0) + 1 }));
-            }
-            setPhase(`Task ${data.index + 1}/${taskTotal} · ZeroG done (${data.layer})`);
+            setPhase(
+              `Task ${data.index + 1}/${taskTotal} · ZeroG done (${data.layer}, recall ${data.recall_latency_ms ?? "?"}ms)`
+            );
           }
         }
         if (data.type === "run_complete") {
+          if (data.demo_stats) setDemoStats(data.demo_stats);
           setPhase("Demo complete");
           setRunning(false);
           es.close();
@@ -162,7 +158,7 @@ export default function SplitScreen() {
             <p className="section-label mb-1">Live benchmark</p>
             <h1 className="text-2xl font-semibold text-text">Cold vs ZeroG</h1>
             <p className="mt-1 text-sm text-text-secondary">
-              Same cluster · different tasks · ZeroG transfers deploy patterns across services
+              Same task per pair · cold explores · ZeroG transfers teammate deploy pattern
             </p>
             {phase && <p className="mt-2 font-mono text-xs text-accent">{phase}</p>}
           </div>
@@ -186,7 +182,7 @@ export default function SplitScreen() {
       <div className="mx-auto max-w-6xl grid md:grid-cols-2 divide-x divide-border border-t border-border min-h-[480px]">
         <AgentPanel
           title="COLD SESSION"
-          subtitle="Gemini · no memory · discovers path from scratch"
+          subtitle="Gemini · no memory · read_docs exploration path"
           task={coldTask}
           tools={coldTools}
           done={!running && coldMetrics.turns > 0}
@@ -194,7 +190,7 @@ export default function SplitScreen() {
         />
         <AgentPanel
           title="ZEROG SESSION"
-          subtitle="Gemini + shared memory · similar task, different service"
+          subtitle="Gemini + shared memory · same task · skips exploration"
           task={zerogTask}
           tools={zerogTools}
           done={!running && zerogMetrics.turns > 0}
@@ -203,8 +199,9 @@ export default function SplitScreen() {
         />
       </div>
 
-      <MetricsBar cold={coldMetrics} zerog={zerogMetrics} />
-      <ResultsChart results={results} layers={layers} />
+      <MetricsBar cold={coldMetrics} zerog={zerogMetrics} demoStats={demoStats} />
+
+      <DemoLogPanel entries={logEntries} runId={runId} />
     </div>
   );
 }
