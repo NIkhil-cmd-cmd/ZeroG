@@ -42,6 +42,7 @@ class Trace:
 class LookupResult:
     hit: bool
     cached_result: str | None = None
+    cached_tools: list[str] | None = None
     examples: list[Trace] = field(default_factory=list)
     layer: str = "cold_start"
     embedding: np.ndarray | None = None
@@ -142,6 +143,7 @@ class ZeroGMemory:
                 return LookupResult(
                     hit=True,
                     cached_result=cached["result"],
+                    cached_tools=cached.get("tools", []),
                     layer="exact_match",
                 )
 
@@ -157,6 +159,7 @@ class ZeroGMemory:
                         hit=True,
                         cached_result=trace["final_output"]
                         or f"Tools: {' → '.join(trace['tools'])}",
+                        cached_tools=trace["tools"],
                         layer="semantic_match",
                         embedding=embedding,
                     )
@@ -178,7 +181,19 @@ class ZeroGMemory:
                         similarity=float(sims[idx]),
                     )
                     for idx in top_k_emb
+                    if self.traces[self.embedding_trace_idx[idx]]["success"]
                 ]
+                if not examples:
+                    examples = [
+                        Trace(
+                            task=self.traces[self.embedding_trace_idx[idx]]["task"],
+                            tool_sequence=self.traces[self.embedding_trace_idx[idx]]["tools"],
+                            success=self.traces[self.embedding_trace_idx[idx]]["success"],
+                            embedding=self.traces[self.embedding_trace_idx[idx]]["embedding"],
+                            similarity=float(sims[idx]),
+                        )
+                        for idx in top_k_emb[:1]
+                    ]
                 return LookupResult(
                     hit=False,
                     examples=examples,
@@ -186,7 +201,7 @@ class ZeroGMemory:
                     embedding=embedding,
                 )
 
-        # Same-cluster fallback: prior successful trace in this domain
+        # Same-cluster fallback: most recent successful trace in this domain
         if cluster:
             prior = [
                 t
@@ -203,7 +218,7 @@ class ZeroGMemory:
                             tool_sequence=best["tools"],
                             success=True,
                             embedding=best["embedding"],
-                            similarity=0.72,
+                            similarity=0.78,
                         )
                     ],
                     layer="few_shot",

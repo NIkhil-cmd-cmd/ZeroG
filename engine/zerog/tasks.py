@@ -103,3 +103,19 @@ def get_tasks_for_demo(cluster: str | None = None, count: int = 10) -> list[dict
     if cluster:
         return [t for t in TASKS if t["cluster"] == cluster][:count]
     return TASKS[:count]
+
+
+def get_demo_pairs(cluster: str | None = None, count: int = 4) -> list[dict]:
+    """Cold and ZeroG always run different tasks in the same cluster."""
+    pool = [t for t in TASKS if t["cluster"] == cluster] if cluster else TASKS
+    if len(pool) < 2:
+        raise ValueError(f"Need at least 2 tasks in cluster {cluster!r}")
+    count = min(count, len(pool) - 1)
+    pairs = []
+    for i in range(count):
+        cold = pool[i % len(pool)]
+        zerog = pool[(i + 2) % len(pool)]
+        if zerog["id"] == cold["id"]:
+            zerog = pool[(i + 1) % len(pool)]
+        pairs.append({"index": i, "cold": cold, "zerog": zerog})
+    return pairs

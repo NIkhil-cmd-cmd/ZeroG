@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import CopyBlock from "@/components/ui/CopyBlock";
-import { ENGINE_URL, GITHUB_URL, REPO_CLONE } from "@/lib/constants";
+import { ENGINE_URL, GITHUB_URL, PUBLIC_ENGINE_URL, REPO_CLONE, WEB_URL } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
@@ -31,9 +31,9 @@ export default function InstallGuide() {
           Add ZeroG to Antigravity
         </h1>
         <p className="mt-4 max-w-2xl text-lg text-text-secondary leading-relaxed">
-          ZeroG is an Antigravity skill plus a local memory engine. The skill tells your agent
+          ZeroG is an Antigravity skill plus a public memory engine. The skill tells your agent
           when to retrieve and record traces. The engine stores embeddings, runs KNN lookup, and
-          trains a GNN on real tool-use patterns.
+          trains a GNN on real tool-use patterns — no local server required.
         </p>
         <div className="mt-6 flex flex-wrap gap-2">
           <span className="pill pill-blue">SKILL.md standard</span>
@@ -61,28 +61,47 @@ export default function InstallGuide() {
         </div>
       </section>
 
-      {/* Step 1 */}
+      {/* Step 1 — public install */}
       <section className="mb-16">
-        <h2 className="text-xl font-semibold text-text mb-2">1. Clone & start the engine</h2>
+        <h2 className="text-xl font-semibold text-text mb-2">1. Install skill (public, one command)</h2>
         <p className="text-text-secondary mb-4 text-sm">
-          The engine must run locally (or on your team&apos;s infra). Antigravity calls it via HTTP.
+          No local clone required. Installs globally to{" "}
+          <code className="text-xs bg-bg-code px-1 rounded">~/.gemini/antigravity/skills/</code>.
         </p>
-        <div className="space-y-4">
-          <CopyBlock label="Clone repository" code={`${REPO_CLONE}\ncd ZeroG`} />
+        <CopyBlock
+          label="Public install"
+          code={`curl -fsSL https://raw.githubusercontent.com/NIkhil-cmd-cmd/ZeroG/main/scripts/install-skill.sh | bash -s public`}
+        />
+        <div className="mt-4 space-y-4">
           <CopyBlock
-            label="Environment (.env in repo root)"
-            code={`GEMINI_API_KEY=your-key\nOPENAI_API_KEY=your-key\nGEMINI_MODEL=gemini-2.5-flash\nZEROG_ENGINE_URL=http://localhost:8000`}
+            label="Antigravity environment"
+            code={`export ZEROG_ENGINE_URL=${PUBLIC_ENGINE_URL}\nexport OPENAI_API_KEY=your-openai-key`}
           />
           <CopyBlock
-            label="Start engine"
-            code={`cd engine\npython3 -m venv .venv && source .venv/bin/activate\npip install -r requirements.txt\n./run.sh server`}
+            label="Public URLs"
+            code={`Engine: ${PUBLIC_ENGINE_URL}\nWeb:    ${WEB_URL}\nGitHub: ${GITHUB_URL}`}
           />
         </div>
       </section>
 
-      {/* Step 2 */}
+      {/* Step 2 — local dev optional */}
       <section className="mb-16">
-        <h2 className="text-xl font-semibold text-text mb-2">2. Install the Antigravity skill</h2>
+        <h2 className="text-xl font-semibold text-text mb-2">2. Local engine (optional)</h2>
+        <p className="text-text-secondary mb-4 text-sm">
+          For offline dev or your own keys. Production demo uses the public engine above.
+        </p>
+        <div className="space-y-4">
+          <CopyBlock label="Clone repository" code={`${REPO_CLONE}\ncd ZeroG`} />
+          <CopyBlock
+            label="Start engine locally"
+            code={`cd engine && ./run.sh server\nexport ZEROG_ENGINE_URL=http://localhost:8000`}
+          />
+        </div>
+      </section>
+
+      {/* Step 3 — skill scopes */}
+      <section className="mb-16">
+        <h2 className="text-xl font-semibold text-text mb-2">3. Skill install scopes</h2>
         <p className="text-text-secondary mb-4 text-sm">
           Per{" "}
           <a
@@ -99,14 +118,12 @@ export default function InstallGuide() {
 
         <div className="space-y-6">
           <div className="ag-card p-6">
-            <h3 className="font-semibold text-text mb-2">Option A — One command (recommended)</h3>
-            <CopyBlock
-              code={`# From your Antigravity project root:\n/path/to/ZeroG/scripts/install-skill.sh workspace\n\n# Or install globally for all projects:\n/path/to/ZeroG/scripts/install-skill.sh global`}
-            />
+            <h3 className="font-semibold text-text mb-2">Option A — Public (recommended)</h3>
+            <CopyBlock code={`curl -fsSL https://raw.githubusercontent.com/NIkhil-cmd-cmd/ZeroG/main/scripts/install-skill.sh | bash -s public`} />
           </div>
 
           <div className="ag-card p-6">
-            <h3 className="font-semibold text-text mb-2">Option B — Workspace scope</h3>
+            <h3 className="font-semibold text-text mb-2">Option B — Workspace scope (local clone)</h3>
             <p className="text-sm text-text-secondary mb-3">
               Skill available only in this repo. Commit{" "}
               <code className="text-xs bg-bg-code px-1 rounded">.agents/skills/</code> to share with
@@ -118,7 +135,7 @@ export default function InstallGuide() {
           </div>
 
           <div className="ag-card p-6">
-            <h3 className="font-semibold text-text mb-2">Option C — Global scope</h3>
+            <h3 className="font-semibold text-text mb-2">Option C — Global scope (local clone)</h3>
             <p className="text-sm text-text-secondary mb-3">Available in every Antigravity workspace.</p>
             <CopyBlock
               code={`mkdir -p ~/.gemini/antigravity/skills\nln -sf ${repoPath}/skill ~/.gemini/antigravity/skills/zerog-shared-memory`}
@@ -127,12 +144,12 @@ export default function InstallGuide() {
         </div>
       </section>
 
-      {/* Step 3 */}
+      {/* Step 4 */}
       <section className="mb-16">
-        <h2 className="text-xl font-semibold text-text mb-2">3. Configure & verify</h2>
+        <h2 className="text-xl font-semibold text-text mb-2">4. Configure & verify</h2>
         <CopyBlock
           label="Shell / Antigravity environment"
-          code={`export ZEROG_ENGINE_URL=http://localhost:8000\nexport OPENAI_API_KEY=your-key`}
+          code={`export ZEROG_ENGINE_URL=${PUBLIC_ENGINE_URL}\nexport OPENAI_API_KEY=your-openai-key`}
         />
         <div className="mt-4 space-y-4">
           <CopyBlock

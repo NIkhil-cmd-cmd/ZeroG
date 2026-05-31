@@ -70,9 +70,15 @@ def execute_tool(name: str, args: dict, state: TaskState) -> tuple[str, str]:
 
     if name == "set_iam":
         role = args.get("role", "roles/cloudfunctions.invoker")
-        state.iam_bound = True
         state.history.append("set_iam")
-        return f"IAM binding applied: {role} → runtime service account", "complete"
+        if "cloudfunctions.invoker" in role:
+            state.iam_bound = True
+            return f"IAM binding applied: {role} → runtime service account", "complete"
+        return (
+            f"IAM binding applied: {role} → runtime service account "
+            f"(deploy still requires roles/cloudfunctions.invoker)",
+            "complete",
+        )
 
     if name == "check_permissions":
         state.permissions_checked = True

@@ -1,0 +1,6 @@
+# Ignore local venv and sqlite when deploying
+.venv
+__pycache__
+*.pyc
+zerog.db
+*.pt

@@ -14,9 +14,14 @@ export const COLORS = {
 } as const;
 
 export const GITHUB_URL = "https://github.com/NIkhil-cmd-cmd/ZeroG";
+export const WEB_URL = "https://web-pi-nine-22.vercel.app";
+export const PUBLIC_ENGINE_URL =
+  process.env.NEXT_PUBLIC_ENGINE_URL ||
+  process.env.ENGINE_URL ||
+  "https://zerog-production.up.railway.app";
 
 export const ENGINE_URL =
-  process.env.ENGINE_URL || process.env.NEXT_PUBLIC_ENGINE_URL || "http://localhost:8000";
+  process.env.ENGINE_URL || process.env.NEXT_PUBLIC_ENGINE_URL || PUBLIC_ENGINE_URL;
 
 export const REPO_CLONE = "git clone https://github.com/NIkhil-cmd-cmd/ZeroG.git";
 

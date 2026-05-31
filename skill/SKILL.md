@@ -10,33 +10,47 @@ description: >
 
 # ZeroG: Shared Memory for Antigravity
 
-## Prerequisites
+## Public install (one command)
 
-1. **ZeroG engine running** at `ZEROG_ENGINE_URL` (default `http://localhost:8000`)
-   ```bash
-   cd /path/to/ZeroG/engine && ./run.sh server
-   ```
-2. **Environment variables** in your shell or Antigravity workspace:
-   - `ZEROG_ENGINE_URL` — engine base URL
-   - `OPENAI_API_KEY` — required for embedding-based retrieval
+From any machine — clones the repo and installs the skill globally:
 
-## Install this skill
-
-From your Antigravity project root:
 ```bash
-/path/to/ZeroG/scripts/install-skill.sh workspace
+curl -fsSL https://raw.githubusercontent.com/NIkhil-cmd-cmd/ZeroG/main/scripts/install-skill.sh | bash -s public
 ```
 
-Or globally (all workspaces):
+Or with a local clone:
+
 ```bash
-/path/to/ZeroG/scripts/install-skill.sh global
+git clone https://github.com/NIkhil-cmd-cmd/ZeroG.git ~/ZeroG
+~/ZeroG/scripts/install-skill.sh global
 ```
 
-Skill paths (Antigravity standard):
+Restart your Antigravity agent session after installing.
+
+## Environment
+
+Set these in your shell, Antigravity workspace env, or `~/.zshrc`:
+
+```bash
+export ZEROG_ENGINE_URL=https://zerog-production.up.railway.app
+export OPENAI_API_KEY=your-openai-key          # embeddings (retrieve/record)
+export GEMINI_API_KEY=your-gemini-key          # optional — only if agent runs tasks via engine
+```
+
+Public endpoints:
+- **Engine API:** https://zerog-production.up.railway.app
+- **Web demo:** https://web-pi-nine-22.vercel.app
+- **GitHub:** https://github.com/NIkhil-cmd-cmd/ZeroG
+
+Health check:
+```bash
+curl -s "$ZEROG_ENGINE_URL/health"
+```
+
+## Skill paths (Antigravity standard)
+
 - Workspace: `.agents/skills/zerog-shared-memory/SKILL.md`
 - Global: `~/.gemini/antigravity/skills/zerog-shared-memory/SKILL.md`
-
-Restart your agent session after installing.
 
 ## Core rules
 
@@ -44,20 +58,22 @@ Restart your agent session after installing.
 - **Always record after** task completion
 - **Similarity thresholds** (returned in `layer` field):
   - `exact_match` / `semantic_match` → follow cached trace (minimal tokens)
-  - `few_shot` → inject similar trace as in-context example
-  - `cold_start` → proceed normally, record for next session
+  - `few_shot` → inject similar trace from same cluster (transfers across services)
+  - `cold_start` → proceed normally, record for the team
 
 ## Tools
 
 ### Retrieve similar traces
+
 ```bash
-export ZEROG_ENGINE_URL="${ZEROG_ENGINE_URL:-http://localhost:8000}"
-/path/to/ZeroG/skill/scripts/memory_client.sh retrieve \
+export ZEROG_ENGINE_URL="${ZEROG_ENGINE_URL:-https://zerog-production.up.railway.app}"
+~/ZeroG/skill/scripts/memory_client.sh retrieve \
   "Deploy Cloud Function with Firestore trigger" \
   cloud_functions
 ```
 
 Or via curl:
+
 ```bash
 curl -s "$ZEROG_ENGINE_URL/memory/retrieve" \
   -H "Content-Type: application/json" \
@@ -67,31 +83,36 @@ curl -s "$ZEROG_ENGINE_URL/memory/retrieve" \
 Returns: `{ hit, layer, cached_result, examples: [{ task, tools, similarity }] }`
 
 ### Record completed trace
+
 ```bash
-/path/to/ZeroG/skill/scripts/memory_client.sh record \
+~/ZeroG/skill/scripts/memory_client.sh record \
   "Deploy Cloud Function with Firestore trigger" \
-  "read_docs,write_function,set_iam,gcloud_deploy,DONE" \
+  "write_function,set_iam,gcloud_deploy,gcloud_check_status,DONE" \
   success \
   cloud_functions
 ```
 
 Or via curl:
+
 ```bash
 curl -s "$ZEROG_ENGINE_URL/memory/record" \
   -H "Content-Type: application/json" \
-  -d '{"task":"...","tools":["read_docs","write_function","gcloud_deploy"],"success":true,"cluster":"cloud_functions"}'
+  -d '{"task":"...","tools":["write_function","set_iam","gcloud_deploy","DONE"],"success":true,"cluster":"cloud_functions"}'
 ```
 
 ## Workflow
 
 1. Agent receives GCP task
 2. Call `retrieve` with task description (+ cluster if known)
-3. If `hit: true` or `layer: few_shot` → use returned trace pattern
+3. If `hit: true` or `layer: few_shot` → use returned trace pattern (skip redundant doc reads, IAM before deploy)
 4. Execute task with Gemini / Antigravity tools
 5. Call `record` with final tool sequence and success/failure
-6. Next session on the team benefits automatically
+6. Teammates on different but similar tasks inherit the pattern automatically
 
-## Health check
-```bash
-curl -s "$ZEROG_ENGINE_URL/health"
-```
+## Clusters
+
+Use the `cluster` field when recording/retrieving:
+
+- `cloud_functions` — deploy, IAM, gen2, triggers
+- `bigquery` — queries, transfers, BQML
+- `iam_security` — roles, org policy, Secret Manager

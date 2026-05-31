@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from zerog.config import DEFAULT_GEMINI_MODEL
 from zerog.memory import ZeroGMemory, DB_PATH
 from zerog.harness import ZeroGHarness
-from zerog.tasks import get_tasks_for_demo
+from zerog.tasks import get_demo_pairs
 from zerog.gnn_service import gnn_service
 
 app = FastAPI(title="ZeroG Engine")
@@ -48,6 +48,27 @@ class RecordRequest(BaseModel):
     cluster: str | None = None
 
 
+@app.get("/")
+async def root():
+    from zerog.config import GITHUB_REPO, PUBLIC_WEB_URL, PUBLIC_ENGINE_URL
+
+    return {
+        "name": "ZeroG Engine",
+        "docs": "/docs",
+        "health": "/health",
+        "github": GITHUB_REPO,
+        "web": PUBLIC_WEB_URL,
+        "engine": PUBLIC_ENGINE_URL,
+        "endpoints": {
+            "retrieve": "POST /memory/retrieve",
+            "record": "POST /memory/record",
+            "predict": "POST /predict",
+            "graph": "GET /graph",
+            "stats": "GET /stats",
+        },
+    }
+
+
 @app.get("/health")
 async def health():
     import os
@@ -72,40 +93,60 @@ async def start_run(config: RunConfig, background_tasks: BackgroundTasks):
 
 async def execute_run(run_id: str, config: RunConfig, queue: asyncio.Queue):
     global demo_stats, last_recall_ms
-    tasks = get_tasks_for_demo(config.cluster, config.count)
+    try:
+        pairs = get_demo_pairs(config.cluster, config.count)
+    except ValueError as e:
+        await queue.put(json.dumps({"type": "error", "message": str(e)}))
+        return
+
     cold = ZeroGHarness(memory=None, model=config.model)
     warm = ZeroGHarness(memory=memory, model=config.model)
 
     cold_results = []
     zerog_results = []
 
-    for i, task_def in enumerate(tasks):
-        task = task_def["task"]
-        cluster = task_def["cluster"]
+    for pair in pairs:
+        i = pair["index"]
+        cold_def = pair["cold"]
+        zerog_def = pair["zerog"]
+        cold_task = cold_def["task"]
+        zerog_task = zerog_def["task"]
+        cluster = cold_def["cluster"]
+
         await queue.put(
             json.dumps(
                 {
                     "type": "task_start",
                     "index": i,
-                    "total": len(tasks),
-                    "task": task,
+                    "total": len(pairs),
+                    "task": cold_task,
+                    "cold_task": cold_task,
+                    "zerog_task": zerog_task,
                     "cluster": cluster,
-                    "service": task_def["service"],
+                    "cold_service": cold_def["service"],
+                    "zerog_service": zerog_def["service"],
                 }
             )
         )
 
         await queue.put(
-            json.dumps({"type": "phase", "agent": "cold", "index": i, "message": f"Task {i+1}/{len(tasks)} · Cold session (no memory)…"})
+            json.dumps(
+                {
+                    "type": "phase",
+                    "agent": "cold",
+                    "index": i,
+                    "message": f"Pair {i+1}/{len(pairs)} · Cold — new task ({cold_def['service']})…",
+                }
+            )
         )
 
-        async def cold_cb(tool, detail, status):
+        async def cold_cb(tool, detail, status, _i=i):
             await queue.put(
                 json.dumps(
                     {
                         "type": "tool_call",
                         "agent": "cold",
-                        "index": i,
+                        "index": _i,
                         "tool": tool,
                         "detail": detail,
                         "status": status,
@@ -114,12 +155,24 @@ async def execute_run(run_id: str, config: RunConfig, queue: asyncio.Queue):
             )
 
         try:
-            cold_result = await cold.run_task(task, cluster=cluster, on_tool_call=cold_cb)
+            cold_result = await cold.run_task(
+                cold_task, cluster=cluster, on_tool_call=cold_cb
+            )
         except Exception as e:
             await queue.put(json.dumps({"type": "error", "agent": "cold", "message": str(e)}))
             break
 
         cold_results.append(cold_result)
+
+        if cold_result.success:
+            await memory.record(
+                task=cold_task,
+                tools=cold_result.tool_calls,
+                success=True,
+                final_output=cold_result.final_output,
+                cluster=cluster,
+            )
+
         await queue.put(
             json.dumps(
                 {
@@ -143,18 +196,18 @@ async def execute_run(run_id: str, config: RunConfig, queue: asyncio.Queue):
                     "type": "phase",
                     "agent": "zerog",
                     "index": i,
-                    "message": f"Task {i+1}/{len(tasks)} · ZeroG session ({len(memory.traces)} traces in memory)…",
+                    "message": f"Pair {i+1}/{len(pairs)} · ZeroG — different task ({zerog_def['service']}) · {len(memory.traces)} traces…",
                 }
             )
         )
 
-        async def warm_cb(tool, detail, status):
+        async def warm_cb(tool, detail, status, _i=i):
             await queue.put(
                 json.dumps(
                     {
                         "type": "tool_call",
                         "agent": "zerog",
-                        "index": i,
+                        "index": _i,
                         "tool": tool,
                         "detail": detail,
                         "status": status,
@@ -165,7 +218,7 @@ async def execute_run(run_id: str, config: RunConfig, queue: asyncio.Queue):
         recall_start = time.perf_counter()
         try:
             warm_result = await warm.run_task(
-                task, cluster=cluster, on_tool_call=warm_cb
+                zerog_task, cluster=cluster, on_tool_call=warm_cb
             )
         except Exception as e:
             await queue.put(json.dumps({"type": "error", "agent": "zerog", "message": str(e)}))
@@ -221,7 +274,7 @@ async def execute_run(run_id: str, config: RunConfig, queue: asyncio.Queue):
     if len(memory.traces) >= 3:
         gnn_service.train_from_traces(memory.all_traces(), epochs=100)
 
-    await queue.put(json.dumps({"type": "run_complete", "total_tasks": len(tasks)}))
+    await queue.put(json.dumps({"type": "run_complete", "total_tasks": len(pairs)}))
 
 
 @app.get("/stream/{run_id}")

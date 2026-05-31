@@ -67,10 +67,12 @@ class ZeroGHarness:
         if self.memory:
             lookup = await self.memory.lookup(task, cluster=cluster)
             if lookup.hit:
+                cached_tools = lookup.cached_tools or []
+                path = " → ".join(cached_tools) if cached_tools else (lookup.cached_result or "cached")
                 if on_tool_call:
                     await on_tool_call(
                         "zerog_recall",
-                        lookup.cached_result or "Cache hit",
+                        f"{lookup.layer.replace('_', ' ').title()} — replaying cached path (0 LLM tokens): {path}",
                         "complete",
                     )
                 return RunResult(
@@ -81,29 +83,34 @@ class ZeroGHarness:
                     latency=time.time() - start,
                     tool_calls=["zerog_recall"],
                     layer=lookup.layer,
-                    final_output=lookup.cached_result or "",
+                    final_output=lookup.cached_result or path,
                 )
 
             if lookup.examples:
-                ex = lookup.examples[0]
-                examples_text = (
-                    f"- Similar task: {ex.task}\n"
-                    f"  Solution: {' → '.join(ex.tool_sequence)} ({'✓' if ex.success else '✗'})"
-                )
+                ex = next((e for e in lookup.examples if e.success), lookup.examples[0])
+                seq = " → ".join(ex.tool_sequence)
+                skip_docs = "read_docs" not in ex.tool_sequence
                 system_additions = (
-                    f"\n\nZeroG shared memory found similar past sessions:\n{examples_text}\n"
-                    "Use these patterns — skip redundant doc reads and failed deploy paths."
+                    f"\n\nZeroG shared memory — prior successful session (sim={ex.similarity:.2f}):\n"
+                    f"  Tool order: {seq}\n"
+                    "Follow this order exactly when possible:\n"
+                    f"- {'Skip read_docs — prior session did not need it' if skip_docs else 'read_docs only if required'}\n"
+                    "- set_iam with roles/cloudfunctions.invoker BEFORE gcloud_deploy\n"
+                    "- write_function: concise stub code only (under 60 lines)\n"
+                    "- Do not call gcloud_deploy until IAM is set"
                 )
                 if on_tool_call:
                     await on_tool_call(
                         "zerog_recall",
-                        f"Found {len(lookup.examples)} similar traces (sim={ex.similarity:.2f})",
+                        f"Few-shot from {len(lookup.examples)} similar traces (sim={ex.similarity:.2f}) — path: {seq}",
                         "complete",
                     )
 
         system = f"""You are an Antigravity coding agent on Google Cloud.
 Solve the task by calling tools in sequence. Use --gen2 when deploying Cloud Functions.
-Set IAM before deploy if needed. Call DONE when finished.{system_additions}"""
+Always grant roles/cloudfunctions.invoker via set_iam before gcloud_deploy.
+Keep write_function code minimal — a short stub, not a full implementation.
+Call DONE when finished.{system_additions}"""
 
         state = TaskState(task=task)
         tool_calls: list[str] = []

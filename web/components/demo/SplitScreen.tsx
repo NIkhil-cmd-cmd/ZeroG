@@ -30,7 +30,8 @@ export default function SplitScreen() {
   const [phase, setPhase] = useState("");
   const [taskIndex, setTaskIndex] = useState(0);
   const [taskTotal, setTaskTotal] = useState(4);
-  const [task, setTask] = useState("");
+  const [coldTask, setColdTask] = useState("");
+  const [zerogTask, setZerogTask] = useState("");
   const [coldTools, setColdTools] = useState<ToolEvent[]>([]);
   const [zerogTools, setZerogTools] = useState<ToolEvent[]>([]);
   const [coldMetrics, setColdMetrics] = useState({ turns: 0, tokens: 0, cost: 0, latency: 0 });
@@ -44,7 +45,8 @@ export default function SplitScreen() {
     setRunning(false);
     setError(null);
     setPhase("");
-    setTask("");
+    setColdTask("");
+    setZerogTask("");
     setColdTools([]);
     setZerogTools([]);
     setColdMetrics({ turns: 0, tokens: 0, cost: 0, latency: 0 });
@@ -88,7 +90,8 @@ export default function SplitScreen() {
           return;
         }
         if (data.type === "task_start") {
-          setTask(data.task);
+          setColdTask(data.cold_task || data.task || "");
+          setZerogTask(data.zerog_task || "");
           setTaskIndex(data.index + 1);
           setTaskTotal(data.total ?? 4);
           setColdTools([]);
@@ -159,7 +162,7 @@ export default function SplitScreen() {
             <p className="section-label mb-1">Live benchmark</p>
             <h1 className="text-2xl font-semibold text-text">Cold vs ZeroG</h1>
             <p className="mt-1 text-sm text-text-secondary">
-              Real Gemini tool-calling · same GCP tasks · memory on the right
+              Same cluster · different tasks · ZeroG transfers deploy patterns across services
             </p>
             {phase && <p className="mt-2 font-mono text-xs text-accent">{phase}</p>}
           </div>
@@ -184,18 +187,18 @@ export default function SplitScreen() {
         <AgentPanel
           title="COLD SESSION"
           subtitle="Gemini · no memory · discovers path from scratch"
-          task={task}
+          task={coldTask}
           tools={coldTools}
           done={!running && coldMetrics.turns > 0}
           metrics={coldMetrics}
         />
         <AgentPanel
           title="ZEROG SESSION"
-          subtitle="Gemini + shared memory · reuses prior traces"
-          task={task}
+          subtitle="Gemini + shared memory · similar task, different service"
+          task={zerogTask}
           tools={zerogTools}
           done={!running && zerogMetrics.turns > 0}
-          metrics={zerogMetrics}
+          metrics={{ ...zerogMetrics, layer: zerogMetrics.layer }}
           zerog
         />
       </div>
